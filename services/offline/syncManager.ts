@@ -1679,10 +1679,29 @@ async function processOutboxItem(
     case "sessions": {
       try {
         let result;
+        let knownRemoteSessionId: string | null = null;
         if (item.operation === "open") {
           console.log("Opening session with ID:", item);
+          // Server open body only accepts these fields; local userId/tenantId
+          // would fail validation and leave close stuck without a remoteId.
+          const openPayload: {
+            openingBalance: number;
+            storeId?: string;
+            registerId?: string;
+            notes?: string;
+          } = {
+            openingBalance: Number(payload.openingBalance) || 0,
+            notes: payload.notes,
+            registerId: payload.registerId,
+          };
+          if (payload.storeId) {
+            openPayload.storeId = await resolveEntityRemoteId(
+              "stores",
+              String(payload.storeId),
+            );
+          }
           result = await store.dispatch(
-            remoteApi.endpoints.openRemoteSession.initiate(payload),
+            remoteApi.endpoints.openRemoteSession.initiate(openPayload),
           );
 
           console.log(result, "session open return data");
@@ -1691,11 +1710,21 @@ async function processOutboxItem(
           const [localSession] = await db
             .select({ remoteId: sessions.remoteId })
             .from(sessions)
-            .where(eq(sessions.id, item.entityId));
-          const remoteSessionId = localSession?.remoteId || item.entityId;
+            .where(eq(sessions.id, item.entityId))
+            .limit(1);
+          // Never send the local ses_… id to the server — defer until open
+          // has stored the real UUID (same pattern as product variants).
+          if (!localSession?.remoteId) {
+            return {
+              success: false,
+              error:
+                "Session is waiting for server sync; close will retry automatically.",
+            };
+          }
+          knownRemoteSessionId = localSession.remoteId;
           result = await store.dispatch(
             remoteApi.endpoints.closeRemoteSession.initiate({
-              id: remoteSessionId,
+              id: knownRemoteSessionId,
               ...payload,
             }),
           );
@@ -1704,9 +1733,23 @@ async function processOutboxItem(
           throw new Error(`Unknown session operation: ${item.operation}`);
         }
         const { data, error } = result;
-        if (error) throw new Error(JSON.stringify(error));
+        if (error) {
+          // Open may have already created the session on a prior attempt.
+          // Adopt that server id so a queued close can proceed.
+          const errorData = (error as any)?.data;
+          const existingSessionId =
+            item.operation === "open"
+              ? errorData?.sessionId || errorData?.session?.id
+              : null;
+          if (existingSessionId) {
+            knownRemoteSessionId = String(existingSessionId);
+          } else {
+            throw new Error(JSON.stringify(error));
+          }
+        }
         const remoteSession = (data as any)?.session ?? (data as any);
-        const remoteSessionId = remoteSession?.id;
+        const remoteSessionId =
+          remoteSession?.id || knownRemoteSessionId || null;
         if (!remoteSessionId)
           throw new Error("Session synced without a server ID");
         await db
