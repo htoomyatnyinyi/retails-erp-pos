@@ -435,12 +435,44 @@ async function saveSyncCursor(tenantId: string, entity: string, rows: any[]) {
   }
 }
 
+async function isLocalEntityEmpty(entity: string): Promise<boolean> {
+  try {
+    const db = getOfflineDb();
+    if (entity === "products") {
+      const res = await db.select({ count: sql<number>`count(*)` }).from(products);
+      return Number(res[0]?.count ?? 0) === 0;
+    }
+    if (entity === "customers") {
+      const res = await db.select({ count: sql<number>`count(*)` }).from(customers);
+      return Number(res[0]?.count ?? 0) === 0;
+    }
+    if (entity === "inventory") {
+      const res = await db.select({ count: sql<number>`count(*)` }).from(inventory);
+      return Number(res[0]?.count ?? 0) === 0;
+    }
+    if (entity === "orders") {
+      const res = await db.select({ count: sql<number>`count(*)` }).from(orders);
+      return Number(res[0]?.count ?? 0) === 0;
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
 async function readIncrementalRows(
   entity: string,
   endpoint: string,
   tenantId: string,
   keys: string[],
 ) {
+  // If local DB table has 0 rows (e.g. fresh DB clear/reset), invalidate cursor to force full pull
+  const isEmpty = await isLocalEntityEmpty(entity);
+  if (isEmpty) {
+    await AsyncStorage.removeItem(syncCursorKey(tenantId, entity));
+    return null;
+  }
+
   const cursor = await readSyncCursor(tenantId, entity);
   // A zero cursor means this device has never completed an initial pull.
   // Incremental endpoints commonly return only changed rows for this value

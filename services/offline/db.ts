@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { drizzle } from "drizzle-orm/expo-sqlite";
 import { migrate } from "drizzle-orm/expo-sqlite/migrator";
 import { openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";
@@ -162,6 +163,18 @@ export async function clearOfflineDatabase() {
       rawDb.execSync("PRAGMA foreign_keys = ON;");
     } catch (e) {
       console.warn("Could not re-enable foreign_keys pragma:", e);
+    }
+
+    // Clear all AsyncStorage sync cursors so next sync pulls full dataset from cloud
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const cursorKeys = keys.filter((k) => k.startsWith("offline-sync-cursor:"));
+      if (cursorKeys.length > 0) {
+        await AsyncStorage.multiRemove(cursorKeys);
+        console.log(`🧹 Cleared ${cursorKeys.length} sync cursors from AsyncStorage`);
+      }
+    } catch (cursorError) {
+      console.warn("Could not clear sync cursors from AsyncStorage:", cursorError);
     }
 
     console.log("🔥 Offline database cleared successfully!");
