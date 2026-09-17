@@ -52,6 +52,7 @@ const formatInventoryDate = (value: unknown) => {
 export default function InventoryScreen() {
   const { currentStoreId, user } = useAppSelector((state) => state.auth);
   const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
+  const [selectedStoreFilter, setSelectedStoreFilter] = useState<string | "ALL">("ALL");
   const [activeTab, setActiveTab] = useState<ActiveTab>("stock");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -67,25 +68,27 @@ export default function InventoryScreen() {
   );
   const [scannedPreviewItems, setScannedPreviewItems] = useState<any[]>([]);
 
+  const queryStoreId =
+    selectedStoreFilter === "ALL"
+      ? currentStoreId || undefined
+      : selectedStoreFilter;
+
   // ✅ Queries
   const {
     data: inventoryData,
     isLoading: isInventoryLoading,
     refetch: refetchInventory,
-  } = useGetLocalInventoryQuery({ storeId: currentStoreId || undefined });
+  } = useGetLocalInventoryQuery({ storeId: queryStoreId });
 
   const {
     data: movementsData,
     isLoading: isMovementsLoading,
     refetch: refetchMovements,
   } = useGetLocalInventoryMovementsQuery({
-    storeId: currentStoreId || undefined,
+    storeId: queryStoreId,
   });
 
   const { data: productsData, refetch: refetchProducts } =
-    // Inventory is store-scoped, but its product master can be tenant-wide.
-    // Load all local products so a valid inventory row is never shown as
-    // "Unknown" only because product.storeId differs.
     useGetLocalProductsQuery({});
   // console.log(productsData, "inventory products data at inventory screen");
   const { data: variantsData } = useGetLocalVariantsQuery(undefined);
@@ -127,6 +130,11 @@ export default function InventoryScreen() {
       const brand = product?.brandId
         ? brands?.find((b: any) => b.id === product.brandId)
         : null;
+      const store = inv.storeId
+        ? stores?.find(
+            (s: any) => s.id === inv.storeId || s.remoteId === inv.storeId,
+          )
+        : null;
       return {
         ...inv,
         name: product?.name || "Unknown Product",
@@ -146,9 +154,10 @@ export default function InventoryScreen() {
         categoryId: product?.categoryId,
         brandName: brand?.name || null,
         brandId: product?.brandId || null,
+        storeName: store?.name || null,
       };
     });
-  }, [inventoryData, productsData, variantsData, brands]);
+  }, [inventoryData, productsData, variantsData, brands, stores]);
 
   // Computed values
   const filteredInventory = inventoryWithDetails.filter((item: any) => {
@@ -538,9 +547,19 @@ export default function InventoryScreen() {
                         ? "Shared product stock"
                         : "Variant")}
                   </Text>
-                  <Text className="text-slate-400 text-[10px] mt-1">
-                    SKU: {variantRow.sku}
-                  </Text>
+                  <View className="flex-row items-center mt-1">
+                    <Text className="text-slate-400 text-[10px]">
+                      SKU: {variantRow.sku}
+                    </Text>
+                    {variantRow.storeName && (
+                      <>
+                        <Text className="text-slate-500 text-[9px] mx-1">•</Text>
+                        <Text className="text-sky-300 text-[9px] font-bold">
+                          🏬 {variantRow.storeName}
+                        </Text>
+                      </>
+                    )}
+                  </View>
                   <View className="flex-row flex-wrap gap-x-2 mt-1">
                     {variantRow.manufacturingDate && (
                       <Text className="text-slate-500 text-[9px]">
@@ -614,6 +633,17 @@ export default function InventoryScreen() {
                     <Text className="text-purple-300/80 text-[9px] font-medium">
                       {item.brandName}
                     </Text>
+                  </>
+                )}
+                {row.storeName && (
+                  <>
+                    <Text className="text-slate-500 text-[9px] mx-1">•</Text>
+                    <View className="flex-row items-center bg-sky-500/10 border border-sky-500/30 px-1.5 py-0.5 rounded-md">
+                      <MaterialIcons name="store" size={10} color="#38bdf8" />
+                      <Text className="text-sky-300 text-[9px] font-bold ml-1">
+                        {row.storeName}
+                      </Text>
+                    </View>
                   </>
                 )}
               </View>
@@ -792,6 +822,67 @@ export default function InventoryScreen() {
           />
         </TouchableOpacity>
       </View>
+
+      {/* Store Filter (Stock tab only) */}
+      {activeTab === "stock" && stores && stores.length > 0 && (
+        <View className="mb-3 px-5">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingRight: 20 }}
+          >
+            <TouchableOpacity
+              onPress={() => setSelectedStoreFilter("ALL")}
+              className={`px-3.5 py-1.5 rounded-xl border flex-row items-center ${
+                selectedStoreFilter === "ALL"
+                  ? "bg-sky-500/20 border-sky-400/50"
+                  : "bg-white/5 border-white/10"
+              }`}
+            >
+              <MaterialIcons
+                name="storefront"
+                size={14}
+                color={selectedStoreFilter === "ALL" ? "#38bdf8" : "#94a3b8"}
+              />
+              <Text
+                className={`text-xs font-semibold ml-1.5 ${
+                  selectedStoreFilter === "ALL" ? "text-sky-300" : "text-slate-300"
+                }`}
+              >
+                All Stores
+              </Text>
+            </TouchableOpacity>
+
+            {stores.map((st: any) => {
+              const isSelected = selectedStoreFilter === st.id;
+              return (
+                <TouchableOpacity
+                  key={st.id}
+                  onPress={() => setSelectedStoreFilter(st.id)}
+                  className={`px-3.5 py-1.5 rounded-xl border flex-row items-center ${
+                    isSelected
+                      ? "bg-sky-500/20 border-sky-400/50"
+                      : "bg-white/5 border-white/10"
+                  }`}
+                >
+                  <MaterialIcons
+                    name="store"
+                    size={14}
+                    color={isSelected ? "#38bdf8" : "#94a3b8"}
+                  />
+                  <Text
+                    className={`text-xs font-semibold ml-1.5 ${
+                      isSelected ? "text-sky-300" : "text-slate-300"
+                    }`}
+                  >
+                    {st.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Search (Stock tab only) */}
       {activeTab === "stock" && (

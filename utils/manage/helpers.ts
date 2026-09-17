@@ -49,9 +49,18 @@ export function getSubtitle(moduleKey: ModuleKey, item: any, stores?: any[]) {
   }
   if (moduleKey === "products") {
     const variants = Array.isArray(item.variants) ? item.variants : [];
+    const store = stores?.find(
+      (s: any) =>
+        s.id === item.storeId ||
+        (s.remoteId && s.remoteId === item.storeId),
+    );
+    const storePrefix = store?.name ? `🏬 ${store.name} • ` : "";
+    const expDate = item.expiryDate
+      ? ` • Exp: ${new Date(item.expiryDate).toLocaleDateString()}`
+      : "";
     return variants.length
-      ? `${variants.length} variants • ${variants.map((v: any) => v.name).join(", ")}`
-      : `${item.sku || "N/A"} • Cost: $${Number(item.costPrice ?? 0).toFixed(2)}`;
+      ? `${storePrefix}${variants.length} variants • ${variants.map((v: any) => v.name).join(", ")}${expDate}`
+      : `${storePrefix}SKU: ${item.sku || "N/A"} • Cost: $${Number(item.costPrice ?? 0).toFixed(2)}${expDate}`;
   }
   if (moduleKey === "stores") return item.address ?? "No address";
   if (moduleKey === "categories") return item.slug ?? "No slug";
