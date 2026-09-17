@@ -23,6 +23,7 @@ import {
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useState } from "react";
+import { router } from "expo-router";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { hasPermission } from "@/utils/auth/permissions";
 import { useAllocateProductStockMutation } from "@/services/api/remoteApi";
@@ -802,25 +803,39 @@ export default function InventoryScreen() {
       </View>
 
       {/* Tabs */}
-      <View className="flex-row px-5 mb-4">
-        <TouchableOpacity
-          className="mr-2"
-          onPress={() => setActiveTab("stock")}
-        >
-          <Pill
-            label="Stock Levels"
-            tone={activeTab === "stock" ? "sky" : "amber"}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          className="mr-2"
-          onPress={() => setActiveTab("movements")}
-        >
-          <Pill
-            label="Movements"
-            tone={activeTab === "movements" ? "sky" : "amber"}
-          />
-        </TouchableOpacity>
+      <View className="flex-row items-center justify-between px-5 mb-4">
+        <View className="flex-row">
+          <TouchableOpacity
+            className="mr-2"
+            onPress={() => setActiveTab("stock")}
+          >
+            <Pill
+              label="Stock Levels"
+              tone={activeTab === "stock" ? "sky" : "amber"}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="mr-2"
+            onPress={() => setActiveTab("movements")}
+          >
+            <Pill
+              label="Movements"
+              tone={activeTab === "movements" ? "sky" : "amber"}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {canManageInventory && (
+          <TouchableOpacity
+            onPress={() => router.push("/manage/stock-audit")}
+            className="flex-row items-center bg-sky-500/20 border border-sky-400/40 px-3 py-1.5 rounded-xl"
+          >
+            <MaterialIcons name="fact-check" size={14} color="#38bdf8" />
+            <Text className="text-sky-300 font-bold text-xs ml-1.5">
+              Stock Audit
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Store Filter (Stock tab only) */}

@@ -980,6 +980,20 @@ export default function ManageScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                  onPress={() => router.push("/manage/stock-audit")}
+                >
+                  <View className="flex-row items-center justify-between mb-3">
+                    <MaterialIcons name="fact-check" size={24} color="#38bdf8" />
+                    <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                  </View>
+                  <Text className="text-white text-base font-bold">Stock Audit</Text>
+                  <Text className="text-slate-400 text-xs mt-1">
+                    Physical count & take
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   className="w-[100%] bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-row items-center justify-between"
                   onPress={() => router.push("/manage/audit-logs")}
                 >
