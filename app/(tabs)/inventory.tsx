@@ -53,7 +53,9 @@ const formatInventoryDate = (value: unknown) => {
 export default function InventoryScreen() {
   const { currentStoreId, user } = useAppSelector((state) => state.auth);
   const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
-  const [selectedStoreFilter, setSelectedStoreFilter] = useState<string | "ALL">("ALL");
+  const [selectedStoreFilter, setSelectedStoreFilter] = useState<
+    string | "ALL"
+  >("ALL");
   const [activeTab, setActiveTab] = useState<ActiveTab>("stock");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -70,9 +72,7 @@ export default function InventoryScreen() {
   const [scannedPreviewItems, setScannedPreviewItems] = useState<any[]>([]);
 
   const queryStoreId =
-    selectedStoreFilter === "ALL"
-      ? undefined
-      : selectedStoreFilter;
+    selectedStoreFilter === "ALL" ? undefined : selectedStoreFilter;
 
   // ✅ Queries
   const {
@@ -303,8 +303,7 @@ export default function InventoryScreen() {
             type: "OUT",
             referenceId,
             referenceType: "STOCK_TRANSFER",
-            reason:
-              payload.reason || `Transfer out to ${destinationStoreName}`,
+            reason: payload.reason || `Transfer out to ${destinationStoreName}`,
           }).unwrap();
           await createMovement({
             ...base,
@@ -554,7 +553,9 @@ export default function InventoryScreen() {
                     </Text>
                     {variantRow.storeName && (
                       <>
-                        <Text className="text-slate-500 text-[9px] mx-1">•</Text>
+                        <Text className="text-slate-500 text-[9px] mx-1">
+                          •
+                        </Text>
                         <Text className="text-sky-300 text-[9px] font-bold">
                           🏬 {variantRow.storeName}
                         </Text>
@@ -861,7 +862,9 @@ export default function InventoryScreen() {
               />
               <Text
                 className={`text-xs font-semibold ml-1.5 ${
-                  selectedStoreFilter === "ALL" ? "text-sky-300" : "text-slate-300"
+                  selectedStoreFilter === "ALL"
+                    ? "text-sky-300"
+                    : "text-slate-300"
                 }`}
               >
                 All Stores
@@ -1743,7 +1746,8 @@ function NewMovementModal({
                   {destinationStore && (
                     <View className="mt-4 rounded-2xl border border-violet-500/30 bg-violet-500/10 px-4 py-3">
                       <Text className="text-violet-200 font-bold text-sm">
-                        {sourceStore?.name || "Source"} → {destinationStore.name}
+                        {sourceStore?.name || "Source"} →{" "}
+                        {destinationStore.name}
                       </Text>
                       <Text className="text-slate-400 text-xs mt-1">
                         Moving stock out of {sourceStore?.name || "source"} and
