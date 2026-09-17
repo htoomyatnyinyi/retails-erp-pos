@@ -14,7 +14,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import QRCode from "react-native-qrcode-svg";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -946,6 +946,59 @@ export default function ManageScreen() {
               )}
             </ScrollView>
           </Card>
+
+          {isAdmin && (
+            <>
+              <SectionTitle title="Admin Control & Audit" />
+              <View className="flex-row flex-wrap gap-3 mb-6">
+                <TouchableOpacity
+                  className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                  onPress={() => router.push("/manage/sessions")}
+                >
+                  <View className="flex-row items-center justify-between mb-3">
+                    <MaterialIcons name="fact-check" size={24} color="#60a5fa" />
+                    <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                  </View>
+                  <Text className="text-white text-base font-bold">Session Logs</Text>
+                  <Text className="text-slate-400 text-xs mt-1">
+                    Cash drawer records
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                  onPress={() => router.push("/manage/inventory-movements")}
+                >
+                  <View className="flex-row items-center justify-between mb-3">
+                    <MaterialIcons name="swap-horiz" size={24} color="#fbbf24" />
+                    <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                  </View>
+                  <Text className="text-white text-base font-bold">Movements</Text>
+                  <Text className="text-slate-400 text-xs mt-1">
+                    Stock history & adjust
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="w-[100%] bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-row items-center justify-between"
+                  onPress={() => router.push("/manage/audit-logs")}
+                >
+                  <View className="flex-row items-center gap-4">
+                    <View className="w-12 h-12 rounded-full bg-rose-500/10 items-center justify-center border border-rose-500/20">
+                      <MaterialIcons name="security" size={24} color="#f87171" />
+                    </View>
+                    <View>
+                      <Text className="text-white text-base font-bold">System Audit Trail</Text>
+                      <Text className="text-slate-400 text-xs mt-0.5">
+                        Track price changes, deletes, and security events
+                      </Text>
+                    </View>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={20} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
 
           <SectionTitle title="Modules" />
           <View className="mb-4 gap-3">
