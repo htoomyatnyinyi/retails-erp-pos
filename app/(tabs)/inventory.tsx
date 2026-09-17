@@ -71,7 +71,7 @@ export default function InventoryScreen() {
 
   const queryStoreId =
     selectedStoreFilter === "ALL"
-      ? currentStoreId || undefined
+      ? undefined
       : selectedStoreFilter;
 
   // ✅ Queries
