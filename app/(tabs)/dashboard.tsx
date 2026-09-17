@@ -14,6 +14,8 @@ import {
   useGetLocalProductsQuery,
   useGetLocalInventoryQuery,
   useGetLocalSessionsQuery,
+  useGetLocalInventoryMovementsQuery,
+  useGetLocalStaffQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -326,32 +328,71 @@ export default function DashboardScreen() {
     storeId: currentStoreId || undefined,
   });
 
+  const {
+    data: movements = [],
+    isLoading: movementsLoading,
+    refetch: refetchMovements,
+  } = useGetLocalInventoryMovementsQuery({
+    storeId: currentStoreId || undefined,
+    limit: 5,
+  });
+
+  const { data: staffList = [] } = useGetLocalStaffQuery({
+    storeId: currentStoreId || undefined,
+  });
+
   const isLoading =
-    ordersLoading || productsLoading || inventoryLoading || sessionsLoading;
+    ordersLoading ||
+    productsLoading ||
+    inventoryLoading ||
+    sessionsLoading ||
+    movementsLoading;
 
   // Compute metrics
   const metrics = useMemo(() => {
+    const parseDate = (d: any): Date | null => {
+      if (!d) return null;
+      if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+      if (typeof d === "number") return new Date(d);
+      if (typeof d === "string") {
+        const formatted =
+          d.includes(" ") && !d.includes("T") ? d.replace(" ", "T") : d;
+        const date = new Date(formatted);
+        return isNaN(date.getTime()) ? null : date;
+      }
+      return null;
+    };
+
+    const isSameDay = (d1: Date | null, d2: Date | null) => {
+      if (!d1 || !d2) return false;
+      return (
+        d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate()
+      );
+    };
+
     const isVoided = (order: any) =>
-      ["VOIDED", "CANCELLED", "CANCELED"].includes(
+      ["VOIDED", "CANCELLED", "CANCELED", "REFUNDED"].includes(
         String(order.status || "").toUpperCase(),
       );
+
     const countsAsRevenue = (order: any) =>
       !isVoided(order) &&
-      ["COMPLETED", "PAID", "CLOSED"].includes(
+      (["COMPLETED", "PAID", "CLOSED", "PENDING"].includes(
         String(order.status || "").toUpperCase(),
-      );
+      ) ||
+        String(order.paymentStatus || "").toUpperCase() === "PAID");
 
-    // Helper to get date strings
-    const todayStr = new Date().toDateString();
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayStr = yesterdayDate.toDateString();
+    const now = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
 
-    const todayOrders = orders.filter(
-      (o: any) => new Date(o.createdAt).toDateString() === todayStr,
+    const todayOrders = orders.filter((o: any) =>
+      isSameDay(parseDate(o.createdAt), now),
     );
-    const yesterdayOrders = orders.filter(
-      (o: any) => new Date(o.createdAt).toDateString() === yesterdayStr,
+    const yesterdayOrders = orders.filter((o: any) =>
+      isSameDay(parseDate(o.createdAt), yesterday),
     );
 
     const todayRevenue = todayOrders
@@ -361,10 +402,12 @@ export default function DashboardScreen() {
       .filter(countsAsRevenue)
       .reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
 
-    const totalOrders = orders.length;
-    const totalRevenue = orders
-      .filter(countsAsRevenue)
-      .reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
+    const completedRevenueOrders = orders.filter(countsAsRevenue);
+    const totalOrders = completedRevenueOrders.length;
+    const totalRevenue = completedRevenueOrders.reduce(
+      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
+      0,
+    );
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     // Trend calculations
@@ -395,14 +438,28 @@ export default function DashboardScreen() {
     const ordersTrendTone = ordersDeltaNum >= 0 ? "emerald" : "rose";
 
     // Order status breakdown (Today)
-    const statusCounts = todayOrders.reduce(
-      (acc: Record<string, number>, order: any) => {
-        const status = order.status || "UNKNOWN";
-        acc[status] = (acc[status] || 0) + 1;
-        return acc;
-      },
-      {},
-    );
+    let completedOrdersCount = 0;
+    let pendingOrdersCount = 0;
+    let voidedOrdersCount = 0;
+
+    for (const order of todayOrders) {
+      const statusUpper = String(order.status || "").toUpperCase();
+      const paymentUpper = String(order.paymentStatus || "").toUpperCase();
+
+      if (
+        ["VOIDED", "CANCELLED", "CANCELED", "REFUNDED"].includes(statusUpper)
+      ) {
+        voidedOrdersCount++;
+      } else if (
+        statusUpper === "COMPLETED" ||
+        statusUpper === "PAID" ||
+        paymentUpper === "PAID"
+      ) {
+        completedOrdersCount++;
+      } else {
+        pendingOrdersCount++;
+      }
+    }
 
     // Last 7 days revenue for chart
     const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -411,13 +468,11 @@ export default function DashboardScreen() {
       return d;
     });
 
-    const dailyRevenue = last7Days.map((d) => {
-      const dayStr = d.toDateString();
+    const dailyRevenue = last7Days.map((targetDate) => {
       return orders
         .filter(
           (o: any) =>
-            new Date(o.createdAt).toDateString() === dayStr &&
-            countsAsRevenue(o),
+            isSameDay(parseDate(o.createdAt), targetDate) && countsAsRevenue(o),
         )
         .reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
     });
@@ -428,18 +483,25 @@ export default function DashboardScreen() {
       { name: string; qty: number; revenue: number }
     > = {};
     for (const order of todayOrders) {
-      if (order.items && Array.isArray(order.items)) {
+      if (countsAsRevenue(order) && order.items && Array.isArray(order.items)) {
         for (const item of order.items) {
-          if (!productSales[item.productId]) {
+          const prodKey = item.variantId
+            ? `${item.productId}_${item.variantId}`
+            : item.productId;
+          if (!prodKey) continue;
+          if (!productSales[prodKey]) {
             const product = products.find((p: any) => p.id === item.productId);
-            productSales[item.productId] = {
-              name: product?.name || "Unknown",
+            const name =
+              item.productName || item.name || product?.name || "Product";
+            productSales[prodKey] = {
+              name,
               qty: 0,
               revenue: 0,
             };
           }
-          productSales[item.productId].qty += Number(item.quantity || 0);
-          productSales[item.productId].revenue +=
+          productSales[prodKey].qty += Number(item.quantity || 0);
+          productSales[prodKey].revenue +=
+            Number(item.subTotal) ||
             Number(item.unitPrice || 0) * Number(item.quantity || 0);
         }
       }
@@ -454,7 +516,7 @@ export default function DashboardScreen() {
     const paymentMix = todayOrders
       .filter(countsAsRevenue)
       .reduce((acc: Record<string, number>, order: any) => {
-        const method = String(order.paymentMethod || "OTHER").toUpperCase();
+        const method = String(order.paymentMethod || "CASH").toUpperCase();
         acc[method] = (acc[method] || 0) + Number(order.grandTotal || 0);
         return acc;
       }, {});
@@ -474,11 +536,47 @@ export default function DashboardScreen() {
 
     // Recent 5 Orders
     const recentOrders = [...orders]
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
+      .sort((a, b) => {
+        const da = parseDate(a.createdAt)?.getTime() || 0;
+        const db = parseDate(b.createdAt)?.getTime() || 0;
+        return db - da;
+      })
       .slice(0, 5);
+
+    // Cashier & Staff Sales Breakdown (Today)
+    const staffSalesMap: Record<
+      string,
+      { id: string; name: string; role: string; ordersCount: number; totalSales: number }
+    > = {};
+
+    for (const order of todayOrders) {
+      if (countsAsRevenue(order)) {
+        const uId = order.userId || "staff_default";
+        if (!staffSalesMap[uId]) {
+          const staffMember = staffList.find(
+            (s: any) => s.id === uId || s.remoteId === uId,
+          );
+          const name =
+            staffMember?.name ||
+            order.user?.name ||
+            (uId === user?.id ? user?.name || "Cashier" : `Staff #${uId.slice(-4)}`);
+          const role =
+            staffMember?.role || (uId === user?.id ? user?.role : "CASHIER");
+          staffSalesMap[uId] = {
+            id: uId,
+            name,
+            role,
+            ordersCount: 0,
+            totalSales: 0,
+          };
+        }
+        staffSalesMap[uId].ordersCount += 1;
+        staffSalesMap[uId].totalSales += Number(order.grandTotal || 0);
+      }
+    }
+    const staffSales = Object.values(staffSalesMap).sort(
+      (a, b) => b.totalSales - a.totalSales,
+    );
 
     return {
       todayOrders: todayOrders.length,
@@ -493,10 +591,9 @@ export default function DashboardScreen() {
 
       avgOrderValue,
 
-      pendingOrders: statusCounts["PENDING"] || 0,
-      completedOrders: statusCounts["COMPLETED"] || 0,
-      voidedOrders:
-        (statusCounts["VOIDED"] || 0) + (statusCounts["CANCELLED"] || 0),
+      pendingOrders: pendingOrdersCount,
+      completedOrders: completedOrdersCount,
+      voidedOrders: voidedOrdersCount,
 
       dailyRevenue,
       last7DaysLabels: last7Days.map((d, idx) =>
@@ -508,13 +605,14 @@ export default function DashboardScreen() {
       topProducts,
       maxProductQty,
       paymentMix,
+      staffSales,
       lowStockCount: lowStockItems.length,
       outOfStockCount: outOfStockItems.length,
       activeSession,
       unsyncedCount,
       recentOrders,
     };
-  }, [orders, products, inventory, sessions]);
+  }, [orders, products, inventory, sessions, staffList, user]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
@@ -524,6 +622,7 @@ export default function DashboardScreen() {
         refetchProducts(),
         refetchInventory(),
         refetchSessions(),
+        refetchMovements(),
       ]);
     } finally {
       setIsRefreshing(false);
@@ -781,6 +880,100 @@ export default function DashboardScreen() {
               )}
             </Card>
 
+            {/* Recent Activity & Stock Logs */}
+            <View className="flex-row items-center justify-between mb-2">
+              <SectionTitle title="Recent Stock & Activity Logs" />
+              <TouchableOpacity
+                onPress={() => router.push("/manage/inventory-movements")}
+                className="flex-row items-center gap-1"
+              >
+                <Text className="text-sky-400 text-xs font-semibold">
+                  View All
+                </Text>
+                <MaterialIcons name="chevron-right" size={14} color="#38bdf8" />
+              </TouchableOpacity>
+            </View>
+            <Card className="mb-6">
+              {movements.length === 0 ? (
+                <Text className="text-slate-500 text-sm text-center py-4">
+                  No recent stock activity logged.
+                </Text>
+              ) : (
+                movements.slice(0, 5).map((m: any) => {
+                  const isPositive =
+                    ["IN", "ADJUSTMENT"].includes(m.type) && Number(m.quantity) > 0;
+                  const typeColor =
+                    m.type === "IN"
+                      ? "text-emerald-400"
+                      : m.type === "OUT" || m.type === "SALE"
+                        ? "text-rose-400"
+                        : "text-amber-400";
+                  const iconName =
+                    m.type === "IN"
+                      ? "add-circle"
+                      : m.type === "OUT" || m.type === "SALE"
+                        ? "remove-circle"
+                        : "tune";
+
+                  const prodName =
+                    m.productName ||
+                    products.find((p: any) => p.id === m.productId)?.name ||
+                    "Inventory Item";
+
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      className="flex-row items-center justify-between py-3 border-b border-white/5 last:border-b-0"
+                      onPress={() => router.push("/manage/inventory-movements")}
+                    >
+                      <View className="flex-row items-center gap-3 flex-1 pr-2">
+                        <View
+                          className={`w-8 h-8 rounded-full items-center justify-center ${
+                            m.type === "IN"
+                              ? "bg-emerald-500/10 border border-emerald-500/20"
+                              : m.type === "OUT" || m.type === "SALE"
+                                ? "bg-rose-500/10 border border-rose-500/20"
+                                : "bg-amber-500/10 border border-amber-500/20"
+                          }`}
+                        >
+                          <MaterialIcons
+                            name={iconName as any}
+                            size={16}
+                            color={
+                              m.type === "IN"
+                                ? "#34d399"
+                                : m.type === "OUT" || m.type === "SALE"
+                                  ? "#f87171"
+                                  : "#fbbf24"
+                            }
+                          />
+                        </View>
+                        <View className="flex-1">
+                          <Text
+                            className="text-white text-sm font-semibold"
+                            numberOfLines={1}
+                          >
+                            {prodName}
+                          </Text>
+                          <Text className="text-slate-500 text-[10px] mt-0.5">
+                            {m.type} • {m.reason || "Movement"} •{" "}
+                            {new Date(m.createdAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text className={`font-bold ${typeColor}`}>
+                        {isPositive ? "+" : ""}
+                        {m.quantity}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </Card>
+
             {/* Status Breakdown (Today) */}
             <SectionTitle title="Today's Order Status" />
             <Card className="mb-6">
@@ -937,6 +1130,40 @@ export default function DashboardScreen() {
                       </Text>
                     </View>
                   ))
+              )}
+            </Card>
+
+            {/* Cashier & Staff Sales Breakdown */}
+            <SectionTitle title="Cashier & Staff Sales (Today)" />
+            <Card className="mb-6">
+              {metrics.staffSales.length === 0 ? (
+                <Text className="text-slate-500 text-sm text-center py-4">
+                  No staff sales recorded today.
+                </Text>
+              ) : (
+                metrics.staffSales.map((s) => (
+                  <View
+                    key={s.id}
+                    className="flex-row items-center justify-between py-3 border-b border-white/5 last:border-b-0"
+                  >
+                    <View className="flex-row items-center gap-3">
+                      <View className="w-9 h-9 rounded-full bg-sky-500/10 border border-sky-500/20 items-center justify-center">
+                        <MaterialIcons name="person" size={18} color="#38bdf8" />
+                      </View>
+                      <View>
+                        <Text className="text-white text-sm font-semibold">
+                          {s.name}
+                        </Text>
+                        <Text className="text-slate-500 text-[10px]">
+                          {s.role} • {s.ordersCount} {s.ordersCount === 1 ? "order" : "orders"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text className="text-emerald-400 font-bold text-sm">
+                      ${s.totalSales.toFixed(2)}
+                    </Text>
+                  </View>
+                ))
               )}
             </Card>
           </ScrollView>

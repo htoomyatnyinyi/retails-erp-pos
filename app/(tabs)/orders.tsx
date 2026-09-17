@@ -15,7 +15,7 @@ import {
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -72,6 +72,9 @@ export default function OrdersScreen() {
   const canVoidOrders = hasPermission(user, "VOID_ORDERS");
   const canRefundOrders = hasPermission(user, "REFUND_ORDERS");
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "ALL">("ALL");
+  const [dateFilter, setDateFilter] = useState<"TODAY" | "YESTERDAY" | "ALL">(
+    "TODAY",
+  );
   const [search, setSearch] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
@@ -85,8 +88,41 @@ export default function OrdersScreen() {
       status: filterStatus === "ALL" ? undefined : filterStatus,
       search: search.trim() || undefined,
     },
-    { pollingInterval: 15000 }, // Local-first data; background sync invalidates immediately
+    { pollingInterval: 15000 },
   );
+
+  const parseDate = (d: any): Date | null => {
+    if (!d) return null;
+    if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+    if (typeof d === "number") return new Date(d);
+    if (typeof d === "string") {
+      const formatted =
+        d.includes(" ") && !d.includes("T") ? d.replace(" ", "T") : d;
+      const date = new Date(formatted);
+      return isNaN(date.getTime()) ? null : date;
+    }
+    return null;
+  };
+
+  const isSameDay = (d1: Date | null, d2: Date | null) => {
+    if (!d1 || !d2) return false;
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  };
+
+  const filteredOrders = useMemo(() => {
+    if (dateFilter === "ALL") return orders;
+    const targetDate = new Date();
+    if (dateFilter === "YESTERDAY") {
+      targetDate.setDate(targetDate.getDate() - 1);
+    }
+    return orders.filter((o: any) =>
+      isSameDay(parseDate(o.createdAt), targetDate),
+    );
+  }, [orders, dateFilter]);
 
   const [updateStatus, { isLoading: isUpdatingStatus }] =
     useUpdateLocalOrderStatusMutation();
@@ -109,7 +145,10 @@ export default function OrdersScreen() {
         (newStatus === "VOIDED" && !canVoidOrders) ||
         (newStatus === "CANCELLED" && !canRefundOrders)
       ) {
-        Alert.alert("Permission required", "You do not have permission for this order action.");
+        Alert.alert(
+          "Permission required",
+          "You do not have permission for this order action.",
+        );
         return;
       }
       Alert.alert(
@@ -216,6 +255,75 @@ export default function OrdersScreen() {
           )}
         </View>
 
+        {/* Date Filters (Today vs Yesterday vs All History) */}
+        <View className="flex-row px-5 mb-3 gap-2">
+          <TouchableOpacity
+            onPress={() => setDateFilter("TODAY")}
+            className={`px-3.5 py-1.5 rounded-xl border flex-row items-center gap-1.5 ${
+              dateFilter === "TODAY"
+                ? "bg-sky-500/20 border-sky-400/40"
+                : "bg-white/5 border-white/10"
+            }`}
+          >
+            <MaterialIcons
+              name="today"
+              size={14}
+              color={dateFilter === "TODAY" ? "#38bdf8" : "#94a3b8"}
+            />
+            <Text
+              className={`text-xs font-bold ${
+                dateFilter === "TODAY" ? "text-sky-300" : "text-slate-400"
+              }`}
+            >
+              Today
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setDateFilter("YESTERDAY")}
+            className={`px-3.5 py-1.5 rounded-xl border flex-row items-center gap-1.5 ${
+              dateFilter === "YESTERDAY"
+                ? "bg-sky-500/20 border-sky-400/40"
+                : "bg-white/5 border-white/10"
+            }`}
+          >
+            <MaterialIcons
+              name="history"
+              size={14}
+              color={dateFilter === "YESTERDAY" ? "#38bdf8" : "#94a3b8"}
+            />
+            <Text
+              className={`text-xs font-bold ${
+                dateFilter === "YESTERDAY" ? "text-sky-300" : "text-slate-400"
+              }`}
+            >
+              Yesterday
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setDateFilter("ALL")}
+            className={`px-3.5 py-1.5 rounded-xl border flex-row items-center gap-1.5 ${
+              dateFilter === "ALL"
+                ? "bg-sky-500/20 border-sky-400/40"
+                : "bg-white/5 border-white/10"
+            }`}
+          >
+            <MaterialIcons
+              name="view-list"
+              size={14}
+              color={dateFilter === "ALL" ? "#38bdf8" : "#94a3b8"}
+            />
+            <Text
+              className={`text-xs font-bold ${
+                dateFilter === "ALL" ? "text-sky-300" : "text-slate-400"
+              }`}
+            >
+              All History
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Status Filters */}
         <ScrollView
           horizontal
@@ -248,7 +356,7 @@ export default function OrdersScreen() {
 
         {/* Orders List */}
         <FlatList
-          data={orders}
+          data={filteredOrders}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120 }}
           renderItem={renderOrderItem}
@@ -324,9 +432,7 @@ export default function OrdersScreen() {
                       />
                       <StatRow
                         label="Date"
-                        value={new Date(
-                          orderDetail.createdAt,
-                        ).toLocaleString()}
+                        value={new Date(orderDetail.createdAt).toLocaleString()}
                       />
                       <StatRow
                         label="Payment Method"
@@ -380,50 +486,53 @@ export default function OrdersScreen() {
                                     : "COMPLETE"}
                                 </Text>
                               </TouchableOpacity>
-                              {canRefundOrders && <TouchableOpacity
+                              {canRefundOrders && (
+                                <TouchableOpacity
+                                  className="flex-1 bg-rose-500/15 py-3 rounded-xl border border-rose-500/30 flex-row items-center justify-center gap-2"
+                                  onPress={() =>
+                                    handleStatusUpdate(
+                                      orderDetail.id,
+                                      "CANCELLED",
+                                      "Cancel",
+                                    )
+                                  }
+                                  disabled={isUpdatingStatus}
+                                >
+                                  <MaterialIcons
+                                    name="cancel"
+                                    size={16}
+                                    color="#f87171"
+                                  />
+                                  <Text className="text-rose-400 font-bold text-xs">
+                                    CANCEL
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                            </>
+                          )}
+                          {orderDetail.status === "COMPLETED" &&
+                            canVoidOrders && (
+                              <TouchableOpacity
                                 className="flex-1 bg-rose-500/15 py-3 rounded-xl border border-rose-500/30 flex-row items-center justify-center gap-2"
                                 onPress={() =>
                                   handleStatusUpdate(
                                     orderDetail.id,
-                                    "CANCELLED",
-                                    "Cancel",
+                                    "VOIDED",
+                                    "Void",
                                   )
                                 }
                                 disabled={isUpdatingStatus}
                               >
                                 <MaterialIcons
-                                  name="cancel"
+                                  name="block"
                                   size={16}
                                   color="#f87171"
                                 />
                                 <Text className="text-rose-400 font-bold text-xs">
-                                  CANCEL
+                                  VOID ORDER
                                 </Text>
-                              </TouchableOpacity>}
-                            </>
-                          )}
-                          {orderDetail.status === "COMPLETED" && canVoidOrders && (
-                            <TouchableOpacity
-                              className="flex-1 bg-rose-500/15 py-3 rounded-xl border border-rose-500/30 flex-row items-center justify-center gap-2"
-                              onPress={() =>
-                                handleStatusUpdate(
-                                  orderDetail.id,
-                                  "VOIDED",
-                                  "Void",
-                                )
-                              }
-                              disabled={isUpdatingStatus}
-                            >
-                              <MaterialIcons
-                                name="block"
-                                size={16}
-                                color="#f87171"
-                              />
-                              <Text className="text-rose-400 font-bold text-xs">
-                                VOID ORDER
-                              </Text>
-                            </TouchableOpacity>
-                          )}
+                              </TouchableOpacity>
+                            )}
                         </View>
                       </View>
                     )}

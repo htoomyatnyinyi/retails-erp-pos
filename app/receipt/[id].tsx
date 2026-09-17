@@ -9,7 +9,9 @@ import {
   SectionTitle,
   StatRow,
 } from "@/components/app-ui";
+import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
+import { clearCart } from "@/services/features/cart/cartSlice";
 import {
   useGetLocalCustomersQuery,
   useGetLocalOrderByIdQuery,
@@ -178,91 +180,104 @@ function formatThermalReceipt(
   receiptNumber: string,
 ): string {
   const lines: string[] = [];
-  const width = 48;
+  const width = 32;
 
   const center = (text: string) => {
+    if (!text) return "";
     const padding = Math.max(0, Math.floor((width - text.length) / 2));
     return " ".repeat(padding) + text;
   };
 
-  const divider = "=".repeat(width);
-  const thinDivider = "-".repeat(width);
+  const padBetween = (left: string, right: string) => {
+    const spaceCount = Math.max(1, width - left.length - right.length);
+    return left + " ".repeat(spaceCount) + right;
+  };
 
-  lines.push(center(store?.name || "POS SYSTEM"));
-  lines.push(center(store?.address || ""));
-  lines.push(center(store?.phone || ""));
-  lines.push(center(`Tel: ${store?.phone || ""}`));
+  const divider = "================================";
+  const thinDivider = "--------------------------------";
+
+  if (store?.name) lines.push(center(store.name));
+  if (store?.address) lines.push(center(store.address));
+  if (store?.phone) lines.push(center(`Tel: ${store.phone}`));
   lines.push(divider);
-  lines.push("");
-  lines.push(`Receipt #: ${receiptNumber}`);
-  lines.push(`Date: ${new Date(order.createdAt).toLocaleString()}`);
-  lines.push(`Customer: ${customer?.name || "Walk-in"}`);
-  lines.push(`Payment: ${order.paymentMethod || "CASH"}`);
-  lines.push("");
+  lines.push(padBetween("Receipt #:", receiptNumber));
+  lines.push(
+    padBetween(
+      "Date:",
+      new Date(order.createdAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    ),
+  );
+  lines.push(
+    padBetween(
+      "Time:",
+      new Date(order.createdAt).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    ),
+  );
+  lines.push(padBetween("Customer:", customer?.name || "Walk-in"));
+  lines.push(padBetween("Payment:", order.paymentMethod || "CASH"));
   lines.push(thinDivider);
-  lines.push("ITEM          QTY  PRICE   TOTAL");
+  lines.push("ITEM           QTY PRICE   TOTAL");
   lines.push(thinDivider);
 
   for (const item of order.items || []) {
-    const name = (item.productName || "Item").slice(0, 15).padEnd(15);
-    const qty = String(item.quantity).padStart(4);
+    const name = (item.productName || "Item").slice(0, 14).padEnd(14);
+    const qty = String(item.quantity).padStart(3);
     const price =
       `$${Number(item.unitPrice || item.price).toFixed(2)}`.padStart(7);
     const total =
       `$${(item.quantity * Number(item.unitPrice || item.price)).toFixed(2)}`.padStart(
         7,
       );
-    lines.push(`${name} ${qty} ${price} ${total}`);
+    lines.push(`${name}${qty} ${price} ${total}`);
   }
 
-  lines.push("");
   lines.push(thinDivider);
   lines.push(
-    `Subtotal:     $${Number(order.subTotal ?? 0).toFixed(2)}`.padStart(width),
+    padBetween("Subtotal:", `$${Number(order.subTotal ?? 0).toFixed(2)}`),
   );
   lines.push(
-    `Tax:          $${Number(order.taxAmount ?? 0).toFixed(2)}`.padStart(width),
+    padBetween("Tax:", `$${Number(order.taxAmount ?? 0).toFixed(2)}`),
   );
   if (order.discountAmount > 0) {
     lines.push(
-      `Discount:    -$${Number(order.discountAmount ?? 0).toFixed(2)}`.padStart(
-        width,
+      padBetween(
+        "Discount:",
+        `-$${Number(order.discountAmount ?? 0).toFixed(2)}`,
       ),
     );
   }
   lines.push(divider);
   lines.push(
-    `TOTAL:        $${Number(order.grandTotal ?? 0).toFixed(2)}`.padStart(
-      width,
-    ),
+    padBetween("TOTAL:", `$${Number(order.grandTotal ?? 0).toFixed(2)}`),
   );
   lines.push(thinDivider);
   lines.push(
-    `Paid:         $${Number(order.paidAmount ?? 0).toFixed(2)}`.padStart(
-      width,
-    ),
+    padBetween("Paid:", `$${Number(order.paidAmount ?? 0).toFixed(2)}`),
   );
   lines.push(
-    `Change:       $${Number(order.changeAmount ?? 0).toFixed(2)}`.padStart(
-      width,
-    ),
+    padBetween("Change:", `$${Number(order.changeAmount ?? 0).toFixed(2)}`),
   );
-  lines.push("");
 
   if (order.paymentBreakdown?.length > 0) {
     lines.push(thinDivider);
     for (const tender of order.paymentBreakdown) {
-      lines.push(`${tender.method}: $${Number(tender.amount).toFixed(2)}`);
+      lines.push(
+        padBetween(tender.method, `$${Number(tender.amount).toFixed(2)}`),
+      );
     }
-    lines.push("");
   }
 
   lines.push(divider);
   lines.push(center("THANK YOU!"));
   lines.push(center("Have a great day!"));
-  lines.push("");
   lines.push(center(receiptNumber));
-  lines.push(center(`Printed: ${new Date().toLocaleString()}`));
 
   return lines.join("\n");
 }
@@ -273,6 +288,7 @@ function formatThermalReceipt(
 
 const ReceiptScreen = () => {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const {
@@ -285,6 +301,7 @@ const ReceiptScreen = () => {
 
   const offline = useAppSelector((state) => state.offline);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Bluetooth state
   const [bluetoothModalVisible, setBluetoothModalVisible] = useState(false);
@@ -730,24 +747,42 @@ const ReceiptScreen = () => {
   // ============================================
 
   const saveAsPDF = async () => {
+    if (!order) return;
+    setIsGeneratingPdf(true);
     try {
       const { uri } = await Print.printToFileAsync({
         html: buildReceiptHtml(),
         base64: false,
       });
-      Alert.alert("PDF Created", `Receipt saved to:\n${uri}`, [
-        { text: "Cancel", style: "cancel" },
-        { text: "Share", onPress: () => Sharing.shareAsync(uri) },
-      ]);
+
+      const isShareAvailable = await Sharing.isAvailableAsync();
+      if (isShareAvailable) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          dialogTitle: `Receipt ${receiptNumber}`,
+          UTI: "com.adobe.pdf",
+        });
+      } else {
+        Alert.alert("PDF Generated", `Receipt PDF created at:\n${uri}`);
+      }
     } catch (error: any) {
-      Alert.alert("Error", error?.message || "Failed to save PDF.");
+      Alert.alert("PDF Error", error?.message || "Failed to save PDF.");
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
   const shareReceipt = async () => {
     if (!order) return;
-    const text = formatThermalReceipt(order, customer, store, receiptNumber);
-    await Share.share({ message: text });
+    try {
+      const text = formatThermalReceipt(order, customer, store, receiptNumber);
+      await Share.share({
+        message: text,
+        title: `Receipt ${receiptNumber}`,
+      });
+    } catch (error: any) {
+      Alert.alert("Share Error", error?.message || "Failed to share receipt.");
+    }
   };
 
   // ============================================
@@ -989,7 +1024,10 @@ const ReceiptScreen = () => {
               title="New Sale"
               icon="add-shopping-cart"
               accent="emerald"
-              onPress={() => router.replace("/(tabs)/pos")}
+              onPress={() => {
+                dispatch(clearCart());
+                router.replace("/(tabs)");
+              }}
             />
             <ActionButton
               title={isPrinting ? "Printing..." : "Print"}
@@ -1010,10 +1048,11 @@ const ReceiptScreen = () => {
               onPress={shareReceipt}
             />
             <ActionButton
-              title="PDF"
+              title={isGeneratingPdf ? "Creating..." : "PDF"}
               icon="picture-as-pdf"
               accent="rose"
               onPress={saveAsPDF}
+              disabled={isGeneratingPdf}
             />
             <ActionButton
               title="Back"

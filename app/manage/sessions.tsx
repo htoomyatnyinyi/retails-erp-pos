@@ -11,11 +11,14 @@ import {
   useGetLocalStaffQuery,
   useGetLocalStoresQuery,
 } from "@/services/features/offline/localApi";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   Text,
@@ -57,6 +60,91 @@ export default function SessionLogsScreen() {
       (s: any) => s.id === storeId || s.remoteId === storeId,
     );
     return found?.name || storeId?.slice(0, 8) || "—";
+  };
+
+  const buildZReportHtml = (session: any) => {
+    const staffName = getStaffName(session.userId);
+    const storeName = getStoreName(session.storeId);
+    const opening = Number(session.openingBalance || 0);
+    const cashSales = Number(session.cashSales || 0);
+    const cardSales = Number(session.cardSales || 0);
+    const digitalSales = Number(session.digitalSales || 0);
+    const totalSales = Number(session.totalSales || cashSales + cardSales + digitalSales);
+    const expected = Number(session.expectedBalance || (opening + cashSales));
+    const closing = session.closingBalance != null ? Number(session.closingBalance) : expected;
+    const discrepancy = Number(session.discrepancy || (closing - expected));
+
+    return `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <style>
+            body { font-family: 'Courier New', Courier, monospace; font-size: 12px; padding: 16px; max-width: 320px; margin: 0 auto; }
+            .center { text-align: center; }
+            .brand { font-size: 18px; font-weight: bold; }
+            .title { font-size: 14px; font-weight: bold; margin: 8px 0; }
+            .divider { border-top: 1px dashed #000; margin: 8px 0; }
+            .thin-divider { border-top: 1px dotted #000; margin: 4px 0; }
+            .row { display: flex; justify-content: space-between; margin: 3px 0; }
+            .bold { font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <div class="brand">${storeName}</div>
+            <div class="divider"></div>
+            <div class="title">END OF SHIFT Z-REPORT</div>
+          </div>
+          <div class="thin-divider"></div>
+          <div class="row"><span>Session ID:</span> <span>#${session.id.slice(-8).toUpperCase()}</span></div>
+          <div class="row"><span>Cashier/Staff:</span> <span>${staffName}</span></div>
+          <div class="row"><span>Opened:</span> <span>${new Date(session.openedAt).toLocaleString()}</span></div>
+          <div class="row"><span>Closed:</span> <span>${session.closedAt ? new Date(session.closedAt).toLocaleString() : "ACTIVE (OPEN)"}</span></div>
+          <div class="divider"></div>
+          <div class="row"><span>Opening Cash:</span> <span>$${opening.toFixed(2)}</span></div>
+          <div class="row"><span>Cash Sales:</span> <span>+$${cashSales.toFixed(2)}</span></div>
+          <div class="row"><span>Expected Cash:</span> <span>$${expected.toFixed(2)}</span></div>
+          <div class="row bold"><span>Actual Closing:</span> <span>$${closing.toFixed(2)}</span></div>
+          <div class="row bold" style="color:${discrepancy < 0 ? '#ef4444' : '#10b981'};"><span>Variance:</span> <span>${discrepancy >= 0 ? "+" : ""}$${discrepancy.toFixed(2)}</span></div>
+          <div class="divider"></div>
+          <div class="row"><span>Card Sales:</span> <span>$${cardSales.toFixed(2)}</span></div>
+          <div class="row"><span>Digital Sales:</span> <span>$${digitalSales.toFixed(2)}</span></div>
+          <div class="divider"></div>
+          <div class="row bold"><span>TOTAL REVENUE:</span> <span>$${totalSales.toFixed(2)}</span></div>
+          <div class="divider"></div>
+          <div class="center" style="margin-top:12px;font-size:10px;color:#666;">
+            <div>Report Generated: ${new Date().toLocaleString()}</div>
+          </div>
+        </body>
+      </html>`;
+  };
+
+  const printZReport = async (session: any) => {
+    try {
+      await Print.printAsync({ html: buildZReportHtml(session) });
+    } catch (e: any) {
+      Alert.alert("Print Error", e?.message || "Failed to print Z-Report.");
+    }
+  };
+
+  const exportPdfZReport = async (session: any) => {
+    try {
+      const { uri } = await Print.printToFileAsync({
+        html: buildZReportHtml(session),
+      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          dialogTitle: `Z-Report #${session.id.slice(-6)}`,
+          UTI: "com.adobe.pdf",
+        });
+      } else {
+        Alert.alert("PDF Created", `Saved to ${uri}`);
+      }
+    } catch (e: any) {
+      Alert.alert("PDF Error", e?.message || "Failed to export PDF.");
+    }
   };
 
   const filteredSessions = useMemo(() => {
@@ -429,6 +517,25 @@ export default function SessionLogsScreen() {
                               </Text>
                             </View>
                           )}
+
+                          {/* Action Buttons: Print Z-Report & PDF Export */}
+                          <View className="mt-3 pt-3 border-t border-white/5 flex-row gap-2">
+                            <TouchableOpacity
+                              onPress={() => printZReport(session)}
+                              className="flex-1 bg-sky-500/20 border border-sky-500/30 rounded-xl py-2 px-3 flex-row items-center justify-center gap-1.5"
+                            >
+                              <MaterialIcons name="print" size={16} color="#38bdf8" />
+                              <Text className="text-sky-300 text-xs font-bold">Print Z-Report</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => exportPdfZReport(session)}
+                              className="flex-1 bg-rose-500/20 border border-rose-500/30 rounded-xl py-2 px-3 flex-row items-center justify-center gap-1.5"
+                            >
+                              <MaterialIcons name="picture-as-pdf" size={16} color="#f87171" />
+                              <Text className="text-rose-300 text-xs font-bold">PDF / Share</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       )}
                     </Card>

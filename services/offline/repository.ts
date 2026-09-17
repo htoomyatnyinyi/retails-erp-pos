@@ -128,22 +128,22 @@ export function normalizeProduct(
     brandId:
       (raw.brandId ?? raw.brand_id) &&
       String(raw.brandId ?? raw.brand_id).trim() !== ""
-        ? raw.brandId ?? raw.brand_id
+        ? (raw.brandId ?? raw.brand_id)
         : null,
     storeId:
       (raw.storeId ?? raw.store_id) &&
       String(raw.storeId ?? raw.store_id).trim() !== ""
-        ? raw.storeId ?? raw.store_id
+        ? (raw.storeId ?? raw.store_id)
         : null,
     categoryId:
       (raw.categoryId ?? raw.category_id) &&
       String(raw.categoryId ?? raw.category_id).trim() !== ""
-        ? raw.categoryId ?? raw.category_id
+        ? (raw.categoryId ?? raw.category_id)
         : null,
     supplierId:
       (raw.supplierId ?? raw.supplier_id) &&
       String(raw.supplierId ?? raw.supplier_id).trim() !== ""
-        ? raw.supplierId ?? raw.supplier_id
+        ? (raw.supplierId ?? raw.supplier_id)
         : null,
     sku:
       raw.sku ||
@@ -184,13 +184,20 @@ export function normalizeProductVariant(
     variant.product?._id;
   return {
     id,
-    remoteId: variant.remoteId ?? variant.remote_id ?? variant.id ?? variant._id,
-    name: variant.name ?? variant.variantName ?? variant.variant_name ?? "Unnamed Variant",
+    remoteId:
+      variant.remoteId ?? variant.remote_id ?? variant.id ?? variant._id,
+    name:
+      variant.name ??
+      variant.variantName ??
+      variant.variant_name ??
+      "Unnamed Variant",
     productId,
     tenantId: variant.tenantId ?? variant.tenant_id,
     sku: variant.sku ?? `VAR-${String(id ?? Date.now()).slice(-8)}`,
     barcode: variant.barcode ?? variant.bar_code,
-    price: Number(variant.price ?? variant.sellingPrice ?? variant.selling_price ?? 0),
+    price: Number(
+      variant.price ?? variant.sellingPrice ?? variant.selling_price ?? 0,
+    ),
     costPrice: Number(variant.costPrice ?? variant.cost_price ?? 0),
     color: variant.color,
     size: variant.size,
@@ -198,8 +205,10 @@ export function normalizeProductVariant(
     isActive: variant.isActive ?? variant.is_active ?? true,
     syncStatus: "synced",
     syncError: null,
-    createdAt: variant.createdAt ?? variant.created_at ?? new Date().toISOString(),
-    updatedAt: variant.updatedAt ?? variant.updated_at ?? new Date().toISOString(),
+    createdAt:
+      variant.createdAt ?? variant.created_at ?? new Date().toISOString(),
+    updatedAt:
+      variant.updatedAt ?? variant.updated_at ?? new Date().toISOString(),
     lastSyncedAt: new Date().toISOString(),
   };
 }
@@ -209,9 +218,10 @@ export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
     inv.productId ?? inv.product_id ?? inv.product?.id ?? inv.product?._id;
   const productId =
     rawProductId && typeof rawProductId === "object"
-      ? rawProductId.id ?? rawProductId._id
+      ? (rawProductId.id ?? rawProductId._id)
       : rawProductId;
-  const storeId = inv.storeId ?? inv.store_id ?? inv.store?.id ?? inv.store?._id;
+  const storeId =
+    inv.storeId ?? inv.store_id ?? inv.store?.id ?? inv.store?._id;
   const rawVariantId =
     inv.variantId ??
     inv.variant_id ??
@@ -220,7 +230,7 @@ export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
     null;
   const variantId =
     rawVariantId && typeof rawVariantId === "object"
-      ? rawVariantId.id ?? rawVariantId._id
+      ? (rawVariantId.id ?? rawVariantId._id)
       : rawVariantId;
   return {
     id: inv.id ?? inv._id ?? inv.remoteId,
@@ -312,10 +322,7 @@ export async function upsertBrands(
           .update(brands)
           .set(values)
           .where(
-            or(
-              eq(brands.remoteId, remoteId),
-              eq(brands.id, String(brand.id)),
-            ),
+            or(eq(brands.remoteId, remoteId), eq(brands.id, String(brand.id))),
           );
       }
     }
@@ -349,33 +356,35 @@ export async function upsertProducts(
         .where(eq(products.remoteId, remoteId))
         .limit(1)
     )[0];
-    const existing = existingByRemoteId ?? (normalized.barcode
-      ? (
-          await db
-            .select({ id: products.id, name: products.name })
-            .from(products)
-            .where(
-              and(
-                eq(products.tenantId, normalized.tenantId),
-                eq(products.barcode, normalized.barcode),
-              ),
-            )
-            .limit(1)
-        )[0]
-      : normalized.sku
+    const existing =
+      existingByRemoteId ??
+      (normalized.barcode
         ? (
             await db
-              .select({ id: products.id })
+              .select({ id: products.id, name: products.name })
               .from(products)
               .where(
                 and(
                   eq(products.tenantId, normalized.tenantId),
-                  eq(products.sku, normalized.sku),
+                  eq(products.barcode, normalized.barcode),
                 ),
               )
               .limit(1)
           )[0]
-        : undefined);
+        : normalized.sku
+          ? (
+              await db
+                .select({ id: products.id })
+                .from(products)
+                .where(
+                  and(
+                    eq(products.tenantId, normalized.tenantId),
+                    eq(products.sku, normalized.sku),
+                  ),
+                )
+                .limit(1)
+            )[0]
+          : undefined);
 
     if (existing && existing.id !== normalized.id) {
       remoteToLocalId[remoteId] = existing.id;
@@ -386,7 +395,11 @@ export async function upsertProducts(
       // create mutation from retrying and creating a duplicate.
       await db
         .update(syncOutbox)
-        .set({ status: "synced", lastError: null, updatedAt: new Date().toISOString() })
+        .set({
+          status: "synced",
+          lastError: null,
+          updatedAt: new Date().toISOString(),
+        })
         .where(
           and(
             eq(syncOutbox.entity, "products"),
@@ -512,7 +525,8 @@ export async function upsertProductVariants(
     // Prefer the stable offline SKU/name identity over a server ID. This is
     // important for devices that previously pulled a server option as a
     // second row before the offline row received its remoteId.
-    const existing = existingByProductAndSku ?? existingByProductAndName ?? existingByRemoteId;
+    const existing =
+      existingByProductAndSku ?? existingByProductAndName ?? existingByRemoteId;
     if (existing && existing.id !== normalized.id) {
       await db
         .update(inventory)
@@ -524,7 +538,11 @@ export async function upsertProductVariants(
         .where(eq(orderItems.variantId, normalized.id));
       await db
         .update(syncOutbox)
-        .set({ status: "synced", lastError: null, updatedAt: new Date().toISOString() })
+        .set({
+          status: "synced",
+          lastError: null,
+          updatedAt: new Date().toISOString(),
+        })
         .where(
           and(
             eq(syncOutbox.entity, "product_variants"),
@@ -704,11 +722,13 @@ export async function upsertInventoryMovements(
   };
   const entityId = (value: any) =>
     value && typeof value === "object"
-      ? value.id ?? value._id ?? value.remoteId
+      ? (value.id ?? value._id ?? value.remoteId)
       : value;
 
   for (const movement of remoteMovements) {
-    const remoteId = String(movement.id ?? movement._id ?? movement.remoteId ?? "");
+    const remoteId = String(
+      movement.id ?? movement._id ?? movement.remoteId ?? "",
+    );
     if (!remoteId) continue;
 
     const remoteProductId = entityId(
@@ -725,13 +745,23 @@ export async function upsertInventoryMovements(
     const [localProduct] = await db
       .select({ id: products.id })
       .from(products)
-      .where(or(eq(products.remoteId, String(remoteProductId)), eq(products.id, String(remoteProductId))))
+      .where(
+        or(
+          eq(products.remoteId, String(remoteProductId)),
+          eq(products.id, String(remoteProductId)),
+        ),
+      )
       .limit(1);
     const [localVariant] = remoteVariantId
       ? await db
           .select({ id: productVariants.id })
           .from(productVariants)
-          .where(or(eq(productVariants.remoteId, String(remoteVariantId)), eq(productVariants.id, String(remoteVariantId))))
+          .where(
+            or(
+              eq(productVariants.remoteId, String(remoteVariantId)),
+              eq(productVariants.id, String(remoteVariantId)),
+            ),
+          )
           .limit(1)
       : [];
     const [localStore] = await db
@@ -747,7 +777,12 @@ export async function upsertInventoryMovements(
     const [existing] = await db
       .select({ id: inventoryMovements.id })
       .from(inventoryMovements)
-      .where(or(eq(inventoryMovements.remoteId, remoteId), eq(inventoryMovements.id, remoteId)))
+      .where(
+        or(
+          eq(inventoryMovements.remoteId, remoteId),
+          eq(inventoryMovements.id, remoteId),
+        ),
+      )
       .limit(1);
 
     const values = {
@@ -755,11 +790,25 @@ export async function upsertInventoryMovements(
       tenantId: movement.tenantId ?? movement.tenant_id ?? defaultTenantId,
       storeId: localStore?.id ?? String(remoteStoreId),
       productId: localProduct?.id ?? String(remoteProductId),
-      variantId: localVariant?.id ?? (remoteVariantId ? String(remoteVariantId) : null),
-      quantity: Math.abs(Number(movement.quantity ?? movement.quantityDelta ?? movement.quantity_delta ?? 0)),
+      variantId:
+        localVariant?.id ?? (remoteVariantId ? String(remoteVariantId) : null),
+      quantity: Math.abs(
+        Number(
+          movement.quantity ??
+            movement.quantityDelta ??
+            movement.quantity_delta ??
+            0,
+        ),
+      ),
       type: localMovementType(movement.type ?? movement.direction),
-      referenceId: String(movement.referenceId ?? movement.reference_id ?? remoteId),
-      referenceType: String(movement.referenceType ?? movement.reference_type ?? "INVENTORY_MOVEMENT"),
+      referenceId: String(
+        movement.referenceId ?? movement.reference_id ?? remoteId,
+      ),
+      referenceType: String(
+        movement.referenceType ??
+          movement.reference_type ??
+          "INVENTORY_MOVEMENT",
+      ),
       reason: movement.reason ?? null,
       syncStatus: "synced",
       syncError: null,
@@ -769,7 +818,10 @@ export async function upsertInventoryMovements(
     };
 
     if (existing) {
-      await db.update(inventoryMovements).set(values).where(eq(inventoryMovements.id, existing.id));
+      await db
+        .update(inventoryMovements)
+        .set(values)
+        .where(eq(inventoryMovements.id, existing.id));
     } else {
       await db.insert(inventoryMovements).values({ id: remoteId, ...values });
     }
@@ -890,7 +942,10 @@ export async function upsertCustomers(
           eq(customers.remoteId, remoteId),
           eq(customers.id, remoteId),
           customer.code
-            ? and(eq(customers.tenantId, tenantId), eq(customers.code, customer.code))
+            ? and(
+                eq(customers.tenantId, tenantId),
+                eq(customers.code, customer.code),
+              )
             : undefined,
         ),
       )
@@ -920,7 +975,10 @@ export async function upsertCustomers(
     };
 
     if (existing) {
-      await db.update(customers).set(values).where(eq(customers.id, existing.id));
+      await db
+        .update(customers)
+        .set(values)
+        .where(eq(customers.id, existing.id));
     } else {
       try {
         await db.insert(customers).values({
@@ -1001,7 +1059,12 @@ export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
             or(
               eq(staff.remoteId, remoteId),
               eq(staff.id, String(s.id)),
-              username ? and(eq(staff.tenantId, tenantId), eq(staff.username, username)) : undefined,
+              username
+                ? and(
+                    eq(staff.tenantId, tenantId),
+                    eq(staff.username, username),
+                  )
+                : undefined,
             ),
           );
       }
@@ -1019,32 +1082,41 @@ export async function upsertSuppliers(
   const seenRemoteIds = new Set<string>();
   const db = getOfflineDb();
   for (const supplier of remoteSuppliers) {
-    const remoteId = String(supplier.remoteId ?? supplier.remote_id ?? supplier.id ?? "");
+    const remoteId = String(
+      supplier.remoteId ?? supplier.remote_id ?? supplier.id ?? "",
+    );
     if (!remoteId || seenRemoteIds.has(remoteId)) continue;
     seenRemoteIds.add(remoteId);
 
     const tenantId = supplier.tenantId ?? supplier.tenant_id ?? defaultTenantId;
     const email = supplier.email?.trim() || null;
-    const code = String(supplier.code ?? "").trim() || `SUP-${remoteId.slice(-8)}`;
+    const code =
+      String(supplier.code ?? "").trim() || `SUP-${remoteId.slice(-8)}`;
     const [byRemoteId] = await db
       .select({ id: suppliers.id })
       .from(suppliers)
       .where(eq(suppliers.remoteId, remoteId))
       .limit(1);
-    const [byEmail] = !byRemoteId && email
-      ? await db
-          .select({ id: suppliers.id })
-          .from(suppliers)
-          .where(and(eq(suppliers.tenantId, tenantId), eq(suppliers.email, email)))
-          .limit(1)
-      : [];
-    const [byCode] = !byRemoteId && !byEmail
-      ? await db
-          .select({ id: suppliers.id })
-          .from(suppliers)
-          .where(and(eq(suppliers.tenantId, tenantId), eq(suppliers.code, code)))
-          .limit(1)
-      : [];
+    const [byEmail] =
+      !byRemoteId && email
+        ? await db
+            .select({ id: suppliers.id })
+            .from(suppliers)
+            .where(
+              and(eq(suppliers.tenantId, tenantId), eq(suppliers.email, email)),
+            )
+            .limit(1)
+        : [];
+    const [byCode] =
+      !byRemoteId && !byEmail
+        ? await db
+            .select({ id: suppliers.id })
+            .from(suppliers)
+            .where(
+              and(eq(suppliers.tenantId, tenantId), eq(suppliers.code, code)),
+            )
+            .limit(1)
+        : [];
     // Prefer the stable tenant identity before remoteId so an older local
     // row is reused instead of creating a second supplier row.
     const existing = byEmail ?? byCode ?? byRemoteId;
@@ -1061,7 +1133,9 @@ export async function upsertSuppliers(
       taxNumber: supplier.taxNumber ?? supplier.tax_number ?? null,
       paymentTerms: supplier.paymentTerms ?? supplier.payment_terms ?? null,
       creditLimit: supplier.creditLimit ?? supplier.credit_limit ?? null,
-      currentBalance: Number(supplier.currentBalance ?? supplier.current_balance ?? 0),
+      currentBalance: Number(
+        supplier.currentBalance ?? supplier.current_balance ?? 0,
+      ),
       isActive: supplier.isActive ?? supplier.is_active ?? true,
       syncStatus: "synced",
       syncError: null,
@@ -1069,7 +1143,10 @@ export async function upsertSuppliers(
       lastSyncedAt: now,
     };
     if (existing) {
-      await db.update(suppliers).set(values).where(eq(suppliers.id, existing.id));
+      await db
+        .update(suppliers)
+        .set(values)
+        .where(eq(suppliers.id, existing.id));
       await db
         .update(syncOutbox)
         .set({ status: "synced", lastError: null, updatedAt: now })
@@ -1172,7 +1249,10 @@ export async function upsertSessions(
       .select({ id: sessions.id })
       .from(sessions)
       .where(
-        or(eq(sessions.remoteId, remoteId), eq(sessions.id, String(session.id))),
+        or(
+          eq(sessions.remoteId, remoteId),
+          eq(sessions.id, String(session.id)),
+        ),
       )
       .limit(1);
     const localId = existing?.id ?? String(session.id);
@@ -1345,7 +1425,8 @@ export async function upsertOrders(
               ),
             )
             .limit(1);
-          const remoteVariantId = item.variantId ?? item.variant_id ?? item.variant?.id;
+          const remoteVariantId =
+            item.variantId ?? item.variant_id ?? item.variant?.id;
           const itemKey = [
             remoteProductId,
             remoteVariantId ?? "",
@@ -1384,7 +1465,7 @@ export async function upsertOrders(
                     ? item.variant?.name
                       ? `${item.product.name} — ${item.variant.name}`
                       : item.product.name
-                    : item.variant?.name ?? null),
+                    : (item.variant?.name ?? null)),
               quantity: item.quantity,
               unitPrice: Number(item.unitPrice ?? item.price ?? 0),
               discountAmount: Number(item.discountAmount ?? 0),
@@ -2290,7 +2371,8 @@ export async function createOfflineOrder(
         cleanPayload.customerId ?? null,
         cleanPayload.sessionId ?? null,
         orderNumber,
-        "PENDING",
+        cleanPayload.status ??
+          (cleanPayload.paymentStatus === "PAID" ? "COMPLETED" : "PENDING"),
         cleanPayload.paymentStatus ?? "PAID",
         cleanPayload.paymentMethod,
         cleanPayload.subTotal,
@@ -2754,7 +2836,11 @@ export async function updateOfflineProduct(
       if (!keptIds.has(existing.id)) {
         await db
           .update(productVariants)
-          .set({ isActive: false, updatedAt: now, syncStatus: "pending" } as Partial<typeof productVariants.$inferInsert>)
+          .set({
+            isActive: false,
+            updatedAt: now,
+            syncStatus: "pending",
+          } as Partial<typeof productVariants.$inferInsert>)
           .where(eq(productVariants.id, existing.id));
       }
     }
