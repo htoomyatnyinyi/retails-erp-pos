@@ -265,37 +265,61 @@ export async function upsertBrands(
 ) {
   if (!remoteBrands.length) return;
   const now = new Date().toISOString();
+  const db = getOfflineDb();
 
-  const brandsToInsert = remoteBrands.map((brand) => ({
-    id: brand.id,
-    remoteId: brand.remoteId ?? brand.id,
-    tenantId: brand.tenantId || defaultTenantId,
-    name: brand.name,
-    description: brand.description,
-    isActive: brand.isActive ?? true,
-    syncStatus: "synced",
-    syncError: null,
-    createdAt: brand.createdAt ?? now,
-    updatedAt: brand.updatedAt ?? now,
-    lastSyncedAt: now,
-  }));
+  for (const brand of remoteBrands) {
+    const tenantId = brand.tenantId || defaultTenantId;
+    const remoteId = String(brand.remoteId ?? brand.id);
 
-  await getOfflineDb()
-    .insert(brands)
-    .values(brandsToInsert)
-    .onConflictDoUpdate({
-      target: brands.id,
-      set: {
-        remoteId: sql`excluded.remote_id`,
-        name: sql`excluded.name`,
-        description: sql`excluded.description`,
-        isActive: sql`excluded.is_active`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: now,
-      },
-    });
+    const [existing] = await db
+      .select({ id: brands.id })
+      .from(brands)
+      .where(
+        or(
+          eq(brands.id, String(brand.id)),
+          eq(brands.remoteId, remoteId),
+          eq(brands.id, remoteId),
+          brand.name
+            ? and(eq(brands.tenantId, tenantId), eq(brands.name, brand.name))
+            : undefined,
+        ),
+      )
+      .limit(1);
+
+    const values = {
+      remoteId,
+      tenantId,
+      name: brand.name || "Unnamed Brand",
+      description: brand.description ?? null,
+      isActive: brand.isActive ?? true,
+      syncStatus: "synced",
+      syncError: null,
+      updatedAt: brand.updatedAt ?? now,
+      lastSyncedAt: now,
+    };
+
+    if (existing) {
+      await db.update(brands).set(values).where(eq(brands.id, existing.id));
+    } else {
+      try {
+        await db.insert(brands).values({
+          id: String(brand.id),
+          createdAt: brand.createdAt ?? now,
+          ...values,
+        });
+      } catch (err) {
+        await db
+          .update(brands)
+          .set(values)
+          .where(
+            or(
+              eq(brands.remoteId, remoteId),
+              eq(brands.id, String(brand.id)),
+            ),
+          );
+      }
+    }
+  }
 }
 
 export async function upsertProducts(
@@ -763,17 +787,17 @@ export async function upsertCategories(
   for (const category of remoteCategories) {
     const tenantId = category.tenantId || defaultTenantId;
     const name = category.name || "Unnamed Category";
+    const targetRemoteId = category.remoteId || category.id;
 
-    // Check if a row already exists by remoteId or by the same (tenantId, name) pair
+    // Check if a row already exists by id, remoteId, or (tenantId, name) pair
     const [existing] = await db
       .select({ id: categories.id })
       .from(categories)
       .where(
         or(
           eq(categories.id, category.id),
-          category.remoteId
-            ? eq(categories.remoteId, category.remoteId)
-            : undefined,
+          eq(categories.remoteId, targetRemoteId),
+          eq(categories.id, targetRemoteId),
           and(eq(categories.tenantId, tenantId), eq(categories.name, name)),
         ),
       )
@@ -784,7 +808,7 @@ export async function upsertCategories(
       await db
         .update(categories)
         .set({
-          remoteId: category.remoteId ?? category.id,
+          remoteId: targetRemoteId,
           name,
           slug: category.slug,
           description: category.description,
@@ -798,23 +822,49 @@ export async function upsertCategories(
         })
         .where(eq(categories.id, existing.id));
     } else {
-      // Insert new row
-      await db.insert(categories).values({
-        id: category.id,
-        remoteId: category.remoteId ?? category.id,
-        tenantId,
-        name,
-        slug: category.slug,
-        description: category.description,
-        parentId: category.parentId,
-        isActive: category.isActive ?? true,
-        sortOrder: category.sortOrder ?? 0,
-        syncStatus: "synced",
-        syncError: null,
-        createdAt: category.createdAt ?? now,
-        updatedAt: category.updatedAt ?? now,
-        lastSyncedAt: now,
-      });
+      try {
+        // Insert new row
+        await db.insert(categories).values({
+          id: category.id,
+          remoteId: targetRemoteId,
+          tenantId,
+          name,
+          slug: category.slug,
+          description: category.description,
+          parentId: category.parentId,
+          isActive: category.isActive ?? true,
+          sortOrder: category.sortOrder ?? 0,
+          syncStatus: "synced",
+          syncError: null,
+          createdAt: category.createdAt ?? now,
+          updatedAt: category.updatedAt ?? now,
+          lastSyncedAt: now,
+        });
+      } catch (insertError) {
+        // Fallback: update any existing row that collided on remoteId or (tenantId, name)
+        await db
+          .update(categories)
+          .set({
+            remoteId: targetRemoteId,
+            name,
+            slug: category.slug,
+            description: category.description,
+            parentId: category.parentId,
+            isActive: category.isActive ?? true,
+            sortOrder: category.sortOrder ?? 0,
+            syncStatus: "synced",
+            syncError: null,
+            updatedAt: category.updatedAt ?? now,
+            lastSyncedAt: now,
+          })
+          .where(
+            or(
+              eq(categories.remoteId, targetRemoteId),
+              eq(categories.id, category.id),
+              and(eq(categories.tenantId, tenantId), eq(categories.name, name)),
+            ),
+          );
+      }
     }
   }
 }
@@ -825,111 +875,138 @@ export async function upsertCustomers(
 ) {
   if (!remoteCustomers.length) return;
   const now = new Date().toISOString();
+  const db = getOfflineDb();
 
-  const customersToInsert = remoteCustomers.map((customer) => ({
-    id: customer.id,
-    remoteId: customer.remoteId ?? customer.id,
-    tenantId: customer.tenantId || defaultTenantId,
-    code: customer.code || `CUS-${Date.now()}`,
-    name: customer.name || "Unnamed Customer",
-    phone: customer.phone,
-    email: customer.email,
-    address: customer.address,
-    dateOfBirth: customer.dateOfBirth,
-    gender: customer.gender,
-    debtAmount: customer.debtAmount ?? 0,
-    loyaltyPoints: customer.loyaltyPoints ?? 0,
-    totalSpent: customer.totalSpent ?? 0,
-    totalOrders: customer.totalOrders ?? 0,
-    tier: customer.tier ?? "BRONZE",
-    tierValidUntil: customer.tierValidUntil,
-    isActive: customer.isActive ?? true,
-    syncStatus: "synced",
-    syncError: null,
-    createdAt: customer.createdAt ?? now,
-    updatedAt: customer.updatedAt ?? now,
-    lastSyncedAt: now,
-  }));
+  for (const customer of remoteCustomers) {
+    const tenantId = customer.tenantId || defaultTenantId;
+    const remoteId = String(customer.remoteId ?? customer.id);
 
-  await getOfflineDb()
-    .insert(customers)
-    .values(customersToInsert)
-    .onConflictDoUpdate({
-      target: customers.id,
-      set: {
-        remoteId: sql`excluded.remote_id`,
-        code: sql`excluded.code`,
-        name: sql`excluded.name`,
-        phone: sql`excluded.phone`,
-        email: sql`excluded.email`,
-        address: sql`excluded.address`,
-        dateOfBirth: sql`excluded.date_of_birth`,
-        gender: sql`excluded.gender`,
-        debtAmount: sql`excluded.debt_amount`,
-        loyaltyPoints: sql`excluded.loyalty_points`,
-        totalSpent: sql`excluded.total_spent`,
-        totalOrders: sql`excluded.total_orders`,
-        tier: sql`excluded.tier`,
-        tierValidUntil: sql`excluded.tier_valid_until`,
-        isActive: sql`excluded.is_active`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: now,
-      },
-    });
+    const [existing] = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(
+        or(
+          eq(customers.id, String(customer.id)),
+          eq(customers.remoteId, remoteId),
+          eq(customers.id, remoteId),
+          customer.code
+            ? and(eq(customers.tenantId, tenantId), eq(customers.code, customer.code))
+            : undefined,
+        ),
+      )
+      .limit(1);
+
+    const values = {
+      remoteId,
+      tenantId,
+      code: customer.code || `CUS-${Date.now()}`,
+      name: customer.name || "Unnamed Customer",
+      phone: customer.phone ?? null,
+      email: customer.email ?? null,
+      address: customer.address ?? null,
+      dateOfBirth: customer.dateOfBirth ?? null,
+      gender: customer.gender ?? null,
+      debtAmount: customer.debtAmount ?? 0,
+      loyaltyPoints: customer.loyaltyPoints ?? 0,
+      totalSpent: customer.totalSpent ?? 0,
+      totalOrders: customer.totalOrders ?? 0,
+      tier: customer.tier ?? "BRONZE",
+      tierValidUntil: customer.tierValidUntil ?? null,
+      isActive: customer.isActive ?? true,
+      syncStatus: "synced",
+      syncError: null,
+      updatedAt: customer.updatedAt ?? now,
+      lastSyncedAt: now,
+    };
+
+    if (existing) {
+      await db.update(customers).set(values).where(eq(customers.id, existing.id));
+    } else {
+      try {
+        await db.insert(customers).values({
+          id: String(customer.id),
+          createdAt: customer.createdAt ?? now,
+          ...values,
+        });
+      } catch (insertError) {
+        await db
+          .update(customers)
+          .set(values)
+          .where(
+            or(
+              eq(customers.remoteId, remoteId),
+              eq(customers.id, String(customer.id)),
+            ),
+          );
+      }
+    }
+  }
 }
 
 export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
   if (!remoteStaff.length) return;
   const now = new Date().toISOString();
+  const db = getOfflineDb();
 
-  const seen = new Set<string>();
-  const uniqueStaff = remoteStaff.filter((s) => {
-    const key = `${s.tenantId || defaultTenantId}:${(s.username || "").toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  for (const s of remoteStaff) {
+    const tenantId = s.tenantId || defaultTenantId;
+    const remoteId = String(s.remoteId ?? s.id);
+    const username = s.username;
 
-  const staffToInsert = uniqueStaff.map((s) => ({
-    id: s.id,
-    remoteId: s.remoteId ?? s.id,
-    tenantId: s.tenantId || defaultTenantId,
-    storeId: s.storeId,
-    username: s.username,
-    email: s.email?.trim() || null,
-    name: s.name,
-    role: s.role,
-    permissions: s.permissions || [],
-    isActive: s.isActive ?? true,
-    syncStatus: "synced",
-    syncError: null,
-    createdAt: s.createdAt ?? now,
-    updatedAt: s.updatedAt ?? now,
-    lastSyncedAt: now,
-  }));
+    const [existing] = await db
+      .select({ id: staff.id })
+      .from(staff)
+      .where(
+        or(
+          eq(staff.id, String(s.id)),
+          eq(staff.remoteId, remoteId),
+          eq(staff.id, remoteId),
+          username
+            ? and(eq(staff.tenantId, tenantId), eq(staff.username, username))
+            : undefined,
+        ),
+      )
+      .limit(1);
 
-  await getOfflineDb()
-    .insert(staff)
-    .values(staffToInsert)
-    .onConflictDoUpdate({
-      target: [staff.tenantId, staff.username],
-      set: {
-        remoteId: sql`excluded.remote_id`,
-        username: sql`excluded.username`,
-        email: sql`excluded.email`,
-        name: sql`excluded.name`,
-        role: sql`excluded.role`,
-        permissions: sql`excluded.permissions`,
-        storeId: sql`excluded.store_id`,
-        isActive: sql`excluded.is_active`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: now,
-      },
-    });
+    const values = {
+      remoteId,
+      tenantId,
+      storeId: s.storeId ?? null,
+      username,
+      email: s.email?.trim() || null,
+      name: s.name || "Staff",
+      role: s.role || "CASHIER",
+      permissions: s.permissions || [],
+      isActive: s.isActive ?? true,
+      syncStatus: "synced",
+      syncError: null,
+      updatedAt: s.updatedAt ?? now,
+      lastSyncedAt: now,
+    };
+
+    if (existing) {
+      await db.update(staff).set(values).where(eq(staff.id, existing.id));
+    } else {
+      try {
+        await db.insert(staff).values({
+          id: String(s.id),
+          createdAt: s.createdAt ?? now,
+          ...values,
+        });
+      } catch (insertError) {
+        await db
+          .update(staff)
+          .set(values)
+          .where(
+            or(
+              eq(staff.remoteId, remoteId),
+              eq(staff.id, String(s.id)),
+              username ? and(eq(staff.tenantId, tenantId), eq(staff.username, username)) : undefined,
+            ),
+          );
+      }
+    }
+  }
 }
 
 export async function upsertSuppliers(
@@ -1019,45 +1096,66 @@ export async function upsertStores(
 ) {
   if (!remoteStores.length) return;
   const now = new Date().toISOString();
+  const db = getOfflineDb();
 
-  const storesToInsert = remoteStores.map((store) => ({
-    id: store.id,
-    remoteId: store.remoteId ?? store.id,
-    tenantId: store.tenantId || defaultTenantId,
-    code: store.code || `STORE-${Date.now()}`,
-    name: store.name || "Unnamed Store",
-    address: store.address,
-    phone: store.phone,
-    email: store.email,
-    taxNumber: store.taxNumber,
-    isActive: store.isActive ?? true,
-    syncStatus: "synced",
-    syncError: null,
-    createdAt: store.createdAt ?? now,
-    updatedAt: store.updatedAt ?? now,
-    lastSyncedAt: now,
-  }));
+  for (const store of remoteStores) {
+    const tenantId = store.tenantId || defaultTenantId;
+    const remoteId = String(store.remoteId ?? store.id);
 
-  await getOfflineDb()
-    .insert(stores)
-    .values(storesToInsert)
-    .onConflictDoUpdate({
-      target: stores.id,
-      set: {
-        remoteId: sql`excluded.remote_id`,
-        code: sql`excluded.code`,
-        name: sql`excluded.name`,
-        address: sql`excluded.address`,
-        phone: sql`excluded.phone`,
-        email: sql`excluded.email`,
-        taxNumber: sql`excluded.tax_number`,
-        isActive: sql`excluded.is_active`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: now,
-      },
-    });
+    const [existing] = await db
+      .select({ id: stores.id })
+      .from(stores)
+      .where(
+        or(
+          eq(stores.id, String(store.id)),
+          eq(stores.remoteId, remoteId),
+          eq(stores.id, remoteId),
+          store.code
+            ? and(eq(stores.tenantId, tenantId), eq(stores.code, store.code))
+            : undefined,
+        ),
+      )
+      .limit(1);
+
+    const values = {
+      remoteId,
+      tenantId,
+      code: store.code || `STORE-${Date.now()}`,
+      name: store.name || "Unnamed Store",
+      address: store.address ?? null,
+      phone: store.phone ?? null,
+      email: store.email ?? null,
+      taxNumber: store.taxNumber ?? null,
+      isActive: store.isActive ?? true,
+      syncStatus: "synced",
+      syncError: null,
+      updatedAt: store.updatedAt ?? now,
+      lastSyncedAt: now,
+    };
+
+    if (existing) {
+      await db.update(stores).set(values).where(eq(stores.id, existing.id));
+    } else {
+      try {
+        await db.insert(stores).values({
+          id: String(store.id),
+          createdAt: store.createdAt ?? now,
+          ...values,
+        });
+      } catch (insertError) {
+        await db
+          .update(stores)
+          .set(values)
+          .where(
+            or(
+              eq(stores.remoteId, remoteId),
+              eq(stores.id, String(store.id)),
+              store.code ? eq(stores.code, store.code) : undefined,
+            ),
+          );
+      }
+    }
+  }
 }
 
 export async function upsertSessions(
