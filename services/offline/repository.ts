@@ -2377,7 +2377,7 @@ export async function createOfflineInventoryMovement(
          )))`
       : `AND variant_id IS NULL`;
 
-    sqlite.runSync(
+    const updateResult = sqlite.runSync(
       `UPDATE inventory SET quantity = ${newQuantity}, updated_at = ? 
        WHERE product_id = ? AND store_id = ? ${variantCondition}`,
       payload.variantId
@@ -2390,6 +2390,29 @@ export async function createOfflineInventoryMovement(
           ]
         : [now, payload.productId, payload.storeId],
     );
+
+    // Destination stores often have no inventory row yet. Mirror server
+    // adjustInventory by creating the row when the update matched nothing.
+    if ((updateResult?.changes ?? 0) === 0) {
+      const initialQuantity = multiplier > 0 ? payload.quantity : 0;
+      sqlite.runSync(
+        `INSERT INTO inventory (
+          id, tenant_id, store_id, product_id, variant_id, quantity,
+          sync_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          createLocalId("inv"),
+          payload.tenantId || null,
+          payload.storeId,
+          payload.productId,
+          payload.variantId ?? null,
+          initialQuantity,
+          "pending",
+          now,
+          now,
+        ],
+      );
+    }
 
     // ✅ Map type to server enum
     const mappedType = mapMovementType(payload.type, payload.referenceType);

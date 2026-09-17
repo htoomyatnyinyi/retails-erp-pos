@@ -24,12 +24,8 @@ import {
 import { MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useState } from "react";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
-import { isOnline } from "@/services/offline/network";
 import { hasPermission } from "@/utils/auth/permissions";
-import {
-  useAllocateProductStockMutation,
-  useCreateStockTransferMutation,
-} from "@/services/api/remoteApi";
+import { useAllocateProductStockMutation } from "@/services/api/remoteApi";
 import {
   ActivityIndicator,
   Alert,
@@ -102,8 +98,6 @@ export default function InventoryScreen() {
   // Mutations
   const [createMovement, { isLoading: isCreatingMovement }] =
     useCreateLocalInventoryMovementMutation();
-  const [createStockTransfer, { isLoading: isCreatingTransfer }] =
-    useCreateStockTransferMutation();
   const [allocateProductStock, { isLoading: isAllocating }] =
     useAllocateProductStockMutation();
   const [adjustStock, { isLoading: isAdjusting }] =
@@ -251,37 +245,56 @@ export default function InventoryScreen() {
         if (!payload.tenantId || !payload.storeId) {
           throw new Error("Missing tenant or source store for movement");
         }
-        const referenceId = `transfer-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 8)}`;
-        const base = {
-          tenantId: payload.tenantId,
-          productId: payload.productId,
-          variantId: payload.variantId,
-          quantity: payload.quantity,
-        };
+        if (!payload.quantity || payload.quantity <= 0) {
+          throw new Error("Quantity must be greater than zero");
+        }
 
-        if (payload.transferToStoreId && (await isOnline())) {
-          await createStockTransfer({
-            fromStoreId: payload.storeId,
-            toStoreId: payload.transferToStoreId,
-            items: [
-              {
-                productId: payload.productId,
-                variantId: payload.variantId,
-                quantity: payload.quantity,
-              },
-            ],
-            notes: payload.reason || "Store transfer",
-          }).unwrap();
-        } else if (payload.transferToStoreId) {
+        const sourceItem = inventoryWithDetails.find(
+          (item: any) =>
+            item.productId === payload.productId &&
+            item.storeId === payload.storeId &&
+            (payload.variantId
+              ? item.variantId === payload.variantId
+              : !item.variantId),
+        );
+        const available = Number(sourceItem?.quantity ?? 0);
+        const sourceStoreName =
+          stores.find((store: any) => store.id === payload.storeId)?.name ||
+          "source store";
+        const destinationStoreName =
+          stores.find((store: any) => store.id === payload.transferToStoreId)
+            ?.name || "destination store";
+
+        if (payload.transferToStoreId) {
+          if (payload.transferToStoreId === payload.storeId) {
+            throw new Error("Choose a different destination store");
+          }
+          if (payload.quantity > available) {
+            throw new Error(
+              `Only ${available} available at ${sourceStoreName}`,
+            );
+          }
+
+          const referenceId = `transfer-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
+          const base = {
+            tenantId: payload.tenantId,
+            productId: payload.productId,
+            variantId: payload.variantId,
+            quantity: payload.quantity,
+          };
+
+          // Always record local OUT+IN so stock moves immediately online and
+          // offline. Sync pushes TRANSFER_OUT / TRANSFER_IN to the server.
           await createMovement({
             ...base,
             storeId: payload.storeId,
             type: "OUT",
             referenceId,
             referenceType: "STOCK_TRANSFER",
-            reason: payload.reason || "Store transfer out",
+            reason:
+              payload.reason || `Transfer out to ${destinationStoreName}`,
           }).unwrap();
           await createMovement({
             ...base,
@@ -289,32 +302,54 @@ export default function InventoryScreen() {
             type: "IN",
             referenceId,
             referenceType: "STOCK_TRANSFER",
-            reason: payload.reason || "Store transfer in",
+            reason: payload.reason || `Transfer in from ${sourceStoreName}`,
           }).unwrap();
-        } else {
-          await createMovement({
-            ...base,
-            storeId: payload.storeId,
-            type: payload.type,
-            referenceId: `manual-${Date.now()}`,
-            referenceType: "STOCK_ADJUSTMENT",
-            reason: payload.reason,
-          }).unwrap();
+
+          setShowMovementModal(false);
+          refetchInventory();
+          refetchMovements();
+          Alert.alert(
+            "Transferred",
+            `Moved ${payload.quantity} from ${sourceStoreName} to ${destinationStoreName}.`,
+          );
+          return;
         }
+
+        if (payload.type === "OUT" && payload.quantity > available) {
+          throw new Error(`Only ${available} available at ${sourceStoreName}`);
+        }
+
+        await createMovement({
+          tenantId: payload.tenantId,
+          productId: payload.productId,
+          variantId: payload.variantId,
+          quantity: payload.quantity,
+          storeId: payload.storeId,
+          type: payload.type,
+          referenceId: `manual-${Date.now()}`,
+          referenceType: "STOCK_ADJUSTMENT",
+          reason: payload.reason,
+        }).unwrap();
+
         setShowMovementModal(false);
         refetchInventory();
         refetchMovements();
-        Alert.alert("Success", "Movement recorded successfully");
+        Alert.alert(
+          "Success",
+          payload.type === "IN"
+            ? "Stock in recorded successfully"
+            : "Stock out recorded successfully",
+        );
       } catch (err: any) {
         Alert.alert("Error", err?.message ?? "Failed to create movement");
       }
     },
     [
       createMovement,
-      createStockTransfer,
       refetchInventory,
       refetchMovements,
-      selectedInventory,
+      inventoryWithDetails,
+      stores,
       canManageInventory,
     ],
   );
@@ -404,7 +439,15 @@ export default function InventoryScreen() {
     return { label: "IN STOCK", tone: "emerald" as const };
   };
 
-  const getMovementIcon = (type: string) => {
+  const getMovementIcon = (type: string, referenceType?: string) => {
+    const isTransfer =
+      referenceType === "STOCK_TRANSFER" ||
+      type === "TRANSFER" ||
+      type === "TRANSFER_IN" ||
+      type === "TRANSFER_OUT";
+    if (isTransfer) {
+      return { name: "swap-horiz" as const, color: "#a78bfa" };
+    }
     switch (type) {
       case "IN":
         return { name: "arrow-downward" as const, color: "#34d399" };
@@ -414,8 +457,6 @@ export default function InventoryScreen() {
         return { name: "tune" as const, color: "#fbbf24" };
       case "COUNT":
         return { name: "fact-check" as const, color: "#60a5fa" };
-      case "TRANSFER":
-        return { name: "swap-horiz" as const, color: "#a78bfa" };
       default:
         return { name: "circle" as const, color: "#94a3b8" };
     }
@@ -609,8 +650,14 @@ export default function InventoryScreen() {
   };
 
   const renderMovementItem = ({ item }: { item: any }) => {
-    const icon = getMovementIcon(item.type);
+    const isTransfer =
+      item.referenceType === "STOCK_TRANSFER" ||
+      ["TRANSFER", "TRANSFER_IN", "TRANSFER_OUT"].includes(item.type);
     const isIn = ["IN", "TRANSFER_IN"].includes(item.type);
+    const icon = getMovementIcon(item.type, item.referenceType);
+    const storeName =
+      stores.find((store: any) => store.id === item.storeId)?.name ||
+      item.storeId;
     const movementVariant = item.variantId
       ? variantsData?.find(
           (variant: any) =>
@@ -618,6 +665,15 @@ export default function InventoryScreen() {
             variant.remoteId === item.variantId,
         )
       : undefined;
+    const title = isTransfer
+      ? isIn
+        ? "Transfer in"
+        : "Transfer out"
+      : item.referenceType === "STOCK_ADJUSTMENT"
+        ? isIn
+          ? "Stock in"
+          : "Stock out"
+        : `${item.type} — ${item.referenceType}`;
     return (
       <Card className="mb-3">
         <View className="flex-row items-center">
@@ -628,11 +684,12 @@ export default function InventoryScreen() {
             <MaterialIcons name={icon.name} size={20} color={icon.color} />
           </View>
           <View className="flex-1">
-            <Text className="text-white font-semibold text-sm">
-              {item.type} — {item.referenceType}
-            </Text>
+            <Text className="text-white font-semibold text-sm">{title}</Text>
             <Text className="text-slate-400 text-xs mt-0.5">
               {item.reason ?? "No reason"}
+            </Text>
+            <Text className="text-slate-500 text-[10px] mt-0.5">
+              Store: {storeName}
             </Text>
             {item.variantId && (
               <Text className="text-slate-500 text-[9px] mt-0.5">
@@ -846,7 +903,7 @@ export default function InventoryScreen() {
         visible={showMovementModal}
         inventoryItems={inventoryWithDetails}
         stores={stores}
-        isLoading={isCreatingMovement || isCreatingTransfer}
+        isLoading={isCreatingMovement}
         onClose={() => setShowMovementModal(false)}
         onSubmit={handleCreateMovement}
       />
@@ -1286,6 +1343,20 @@ function NewMovementModal({
   const selectedItem = inventoryItems.find(
     (item: any) => item.id === selectedInventoryId,
   );
+  const sourceStore = stores.find(
+    (store: any) => store.id === selectedItem?.storeId,
+  );
+  const destinationStore = stores.find(
+    (store: any) => store.id === targetStoreId,
+  );
+  const destinationStores = stores.filter(
+    (store: any) => store.id !== selectedItem?.storeId,
+  );
+  const quantityNumber = Number(quantity) || 0;
+  const canSubmit =
+    !!selectedInventoryId &&
+    quantityNumber > 0 &&
+    (movementMode === "STOCK" || !!targetStoreId);
 
   return (
     <Modal
@@ -1303,7 +1374,9 @@ function NewMovementModal({
           <View className="bg-slate-900 rounded-t-4xl border-t border-white/10 p-6 max-h-[85%]">
             <View className="flex-row items-center justify-between mb-6">
               <Text className="text-white font-black text-xl">
-                New Movement
+                {movementMode === "TRANSFER"
+                  ? "Transfer Between Stores"
+                  : "New Movement"}
               </Text>
               <TouchableOpacity
                 onPress={onClose}
@@ -1314,106 +1387,115 @@ function NewMovementModal({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Movement Type */}
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                Type
+                Action
               </Text>
               <View className="flex-row gap-3 mb-5">
                 <TouchableOpacity
                   className={`flex-1 rounded-2xl py-3 items-center border ${
-                    movementType === "IN"
-                      ? "bg-emerald-500/20 border-emerald-500/40"
+                    movementMode === "STOCK"
+                      ? "bg-sky-500/20 border-sky-500/40"
                       : "bg-white/5 border-white/10"
                   }`}
-                  onPress={() => setMovementType("IN")}
+                  onPress={() => {
+                    setMovementMode("STOCK");
+                    setTargetStoreId("");
+                  }}
                 >
                   <MaterialIcons
-                    name="arrow-downward"
+                    name="tune"
                     size={20}
-                    color={movementType === "IN" ? "#34d399" : "#64748b"}
+                    color={movementMode === "STOCK" ? "#38bdf8" : "#64748b"}
                   />
                   <Text
                     className={`font-bold text-sm mt-1 ${
-                      movementType === "IN"
-                        ? "text-emerald-400"
+                      movementMode === "STOCK"
+                        ? "text-sky-300"
                         : "text-slate-400"
                     }`}
                   >
-                    Stock In
+                    Adjust stock
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   className={`flex-1 rounded-2xl py-3 items-center border ${
-                    movementType === "OUT"
-                      ? "bg-rose-500/20 border-rose-500/40"
+                    movementMode === "TRANSFER"
+                      ? "bg-violet-500/20 border-violet-500/40"
                       : "bg-white/5 border-white/10"
                   }`}
-                  onPress={() => setMovementType("OUT")}
+                  onPress={() => setMovementMode("TRANSFER")}
                 >
                   <MaterialIcons
-                    name="arrow-upward"
+                    name="swap-horiz"
                     size={20}
-                    color={movementType === "OUT" ? "#f87171" : "#64748b"}
+                    color={movementMode === "TRANSFER" ? "#a78bfa" : "#64748b"}
                   />
                   <Text
                     className={`font-bold text-sm mt-1 ${
-                      movementType === "OUT"
-                        ? "text-rose-400"
+                      movementMode === "TRANSFER"
+                        ? "text-violet-300"
                         : "text-slate-400"
                     }`}
                   >
-                    Stock Out
+                    Store transfer
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                className={`rounded-2xl py-3 items-center border mb-5 ${
-                  movementMode === "TRANSFER"
-                    ? "bg-violet-500/20 border-violet-500/40"
-                    : "bg-white/5 border-white/10"
-                }`}
-                onPress={() =>
-                  setMovementMode((mode) =>
-                    mode === "TRANSFER" ? "STOCK" : "TRANSFER",
-                  )
-                }
-              >
-                <Text className="text-violet-300 font-bold">
-                  {movementMode === "TRANSFER"
-                    ? "Store-to-store transfer enabled"
-                    : "Move product to another store"}
-                </Text>
-              </TouchableOpacity>
-
-              {movementMode === "TRANSFER" && selectedItem && (
-                <View className="mb-5">
+              {movementMode === "STOCK" && (
+                <>
                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                    Destination Store
+                    Type
                   </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {stores
-                      .filter((store: any) => store.id !== selectedItem.storeId)
-                      .map((store: any) => (
-                        <TouchableOpacity
-                          key={store.id}
-                          className={`mr-2 px-4 py-3 rounded-xl border ${
-                            targetStoreId === store.id
-                              ? "bg-violet-500/20 border-violet-400"
-                              : "bg-white/5 border-white/10"
-                          }`}
-                          onPress={() => setTargetStoreId(store.id)}
-                        >
-                          <Text className="text-white font-semibold">
-                            {store.name}
-                          </Text>
-                          <Text className="text-slate-400 text-xs">
-                            {store.code}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                  </ScrollView>
-                </View>
+                  <View className="flex-row gap-3 mb-5">
+                    <TouchableOpacity
+                      className={`flex-1 rounded-2xl py-3 items-center border ${
+                        movementType === "IN"
+                          ? "bg-emerald-500/20 border-emerald-500/40"
+                          : "bg-white/5 border-white/10"
+                      }`}
+                      onPress={() => setMovementType("IN")}
+                    >
+                      <MaterialIcons
+                        name="arrow-downward"
+                        size={20}
+                        color={movementType === "IN" ? "#34d399" : "#64748b"}
+                      />
+                      <Text
+                        className={`font-bold text-sm mt-1 ${
+                          movementType === "IN"
+                            ? "text-emerald-400"
+                            : "text-slate-400"
+                        }`}
+                      >
+                        Stock In
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className={`flex-1 rounded-2xl py-3 items-center border ${
+                        movementType === "OUT"
+                          ? "bg-rose-500/20 border-rose-500/40"
+                          : "bg-white/5 border-white/10"
+                      }`}
+                      onPress={() => setMovementType("OUT")}
+                    >
+                      <MaterialIcons
+                        name="arrow-upward"
+                        size={20}
+                        color={movementType === "OUT" ? "#f87171" : "#64748b"}
+                      />
+                      <Text
+                        className={`font-bold text-sm mt-1 ${
+                          movementType === "OUT"
+                            ? "text-rose-400"
+                            : "text-slate-400"
+                        }`}
+                      >
+                        Stock Out
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
               )}
 
               {/* Product Selection */}
@@ -1448,11 +1530,15 @@ function NewMovementModal({
                         )}
                       </View>
                       <Text className="text-slate-400 text-xs mt-0.5">
-                        Stock: {selectedItem.quantity}
+                        At {sourceStore?.name || "this store"}:{" "}
+                        {selectedItem.quantity} in stock
                       </Text>
                     </View>
                     <TouchableOpacity
-                      onPress={() => setSelectedInventoryId("")}
+                      onPress={() => {
+                        setSelectedInventoryId("");
+                        setTargetStoreId("");
+                      }}
                       className="bg-white/10 p-1.5 rounded-full"
                     >
                       <MaterialIcons name="close" size={14} color="#94a3b8" />
@@ -1479,6 +1565,7 @@ function NewMovementModal({
                           className="flex-row items-center py-2.5 px-3 rounded-xl active:bg-white/5"
                           onPress={() => {
                             setSelectedInventoryId(item.id);
+                            setTargetStoreId("");
                             setProductSearch("");
                           }}
                         >
@@ -1512,18 +1599,77 @@ function NewMovementModal({
                 </>
               )}
 
+              {movementMode === "TRANSFER" && selectedItem && (
+                <View className="mb-5">
+                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                    Destination store
+                  </Text>
+                  {destinationStores.length === 0 ? (
+                    <Text className="text-slate-500 text-sm mb-3">
+                      No other stores available for transfer.
+                    </Text>
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                    >
+                      {destinationStores.map((store: any) => (
+                        <TouchableOpacity
+                          key={store.id}
+                          className={`mr-2 px-4 py-3 rounded-xl border ${
+                            targetStoreId === store.id
+                              ? "bg-violet-500/20 border-violet-400"
+                              : "bg-white/5 border-white/10"
+                          }`}
+                          onPress={() => setTargetStoreId(store.id)}
+                        >
+                          <Text className="text-white font-semibold">
+                            {store.name}
+                          </Text>
+                          <Text className="text-slate-400 text-xs">
+                            {store.code}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  {destinationStore && (
+                    <View className="mt-4 rounded-2xl border border-violet-500/30 bg-violet-500/10 px-4 py-3">
+                      <Text className="text-violet-200 font-bold text-sm">
+                        {sourceStore?.name || "Source"} → {destinationStore.name}
+                      </Text>
+                      <Text className="text-slate-400 text-xs mt-1">
+                        Moving stock out of {sourceStore?.name || "source"} and
+                        into {destinationStore.name}.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
               {/* Quantity */}
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
                 Quantity
               </Text>
               <TextInput
-                className="bg-white/5 text-white text-lg font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+                className="bg-white/5 text-white text-lg font-bold rounded-2xl px-4 py-3 border border-white/10 mb-2"
                 keyboardType="number-pad"
                 value={quantity}
                 onChangeText={setQuantity}
                 placeholder="0"
                 placeholderTextColor="#64748b"
               />
+              {selectedItem &&
+                (movementMode === "TRANSFER" || movementType === "OUT") && (
+                  <Text className="text-slate-500 text-xs mb-4 ml-1">
+                    Available: {selectedItem.quantity}
+                  </Text>
+                )}
+              {!(
+                selectedItem &&
+                (movementMode === "TRANSFER" || movementType === "OUT")
+              ) && <View className="mb-4" />}
 
               {/* Reason */}
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
@@ -1533,7 +1679,11 @@ function NewMovementModal({
                 className="bg-white/5 text-white text-sm rounded-2xl px-4 py-3 border border-white/10 mb-6"
                 value={reason}
                 onChangeText={setReason}
-                placeholder="e.g. New shipment received"
+                placeholder={
+                  movementMode === "TRANSFER"
+                    ? "e.g. Restock downtown branch"
+                    : "e.g. New shipment received"
+                }
                 placeholderTextColor="#64748b"
                 multiline
               />
@@ -1541,17 +1691,12 @@ function NewMovementModal({
               {/* Submit */}
               <TouchableOpacity
                 className={`rounded-2xl py-4 items-center border mb-4 ${
-                  movementType === "IN"
-                    ? "bg-emerald-500 border-emerald-400"
-                    : "bg-rose-500 border-rose-400"
-                } ${
-                  isLoading ||
-                  !selectedInventoryId ||
-                  !quantity ||
-                  (movementMode === "TRANSFER" && !targetStoreId)
-                    ? "opacity-50"
-                    : ""
-                }`}
+                  movementMode === "TRANSFER"
+                    ? "bg-violet-500 border-violet-400"
+                    : movementType === "IN"
+                      ? "bg-emerald-500 border-emerald-400"
+                      : "bg-rose-500 border-rose-400"
+                } ${isLoading || !canSubmit ? "opacity-50" : ""}`}
                 onPress={() => {
                   const product = inventoryItems.find(
                     (item: any) => item.id === selectedInventoryId,
@@ -1559,7 +1704,7 @@ function NewMovementModal({
                   onSubmit({
                     productId: product?.productId || selectedInventoryId,
                     variantId: product?.variantId || undefined,
-                    quantity: Number(quantity),
+                    quantity: quantityNumber,
                     type: movementType,
                     reason,
                     tenantId: product?.tenantId,
@@ -1568,21 +1713,20 @@ function NewMovementModal({
                       movementMode === "TRANSFER" ? targetStoreId : undefined,
                   });
                 }}
-                disabled={
-                  isLoading ||
-                  !selectedInventoryId ||
-                  !quantity ||
-                  (movementMode === "TRANSFER" && !targetStoreId)
-                }
+                disabled={isLoading || !canSubmit}
                 activeOpacity={0.8}
               >
                 {isLoading ? (
                   <ActivityIndicator color="white" />
                 ) : (
                   <Text className="text-white font-bold text-lg">
-                    {movementType === "IN"
-                      ? "Record Stock In"
-                      : "Record Stock Out"}
+                    {movementMode === "TRANSFER"
+                      ? destinationStore
+                        ? `Transfer to ${destinationStore.name}`
+                        : "Transfer to store"
+                      : movementType === "IN"
+                        ? "Record Stock In"
+                        : "Record Stock Out"}
                   </Text>
                 )}
               </TouchableOpacity>

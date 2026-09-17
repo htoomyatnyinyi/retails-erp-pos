@@ -444,7 +444,7 @@ async function readIncrementalRows(
   const cursor = await readSyncCursor(tenantId, entity);
   // A zero cursor means this device has never completed an initial pull.
   // Incremental endpoints commonly return only changed rows for this value
-  // (and mshowManagementay legitimately return an empty array), which used to make stock
+  // (and may legitimately return an empty array), which used to make stock
   // disappear until a later sync happened to return a change. Let callers
   // fall back to their paginated full pull on first use.
   if (cursor <= 0) return null;
