@@ -278,18 +278,20 @@ export default function POSScreen() {
       return;
     }
     setShowCartModal(true);
-    Animated.spring(slideAnim, {
+    Animated.timing(slideAnim, {
       toValue: 0,
+      duration: 160,
       useNativeDriver: true,
-      speed: 12,
+      // speed: 12,
     }).start();
   };
 
   const closeCart = () => {
-    Animated.spring(slideAnim, {
+    Animated.timing(slideAnim, {
       toValue: height,
+      duration: 160,
       useNativeDriver: true,
-      speed: 12,
+      // speed: 12,
     }).start(() => setShowCartModal(false));
   };
 
