@@ -106,13 +106,9 @@ export default function StockAuditScreen() {
 
   // Start Session
   const handleStartAudit = useCallback(() => {
-    const initialMap: Record<string, number> = {};
-    for (const item of auditList) {
-      initialMap[item.itemKey] = item.systemQty;
-    }
-    setCountsMap(initialMap);
+    setCountsMap({});
     setSessionActive(true);
-  }, [auditList]);
+  }, []);
 
   // Handle Qty Update
   const updateCount = useCallback((itemKey: string, newQty: number) => {
@@ -135,10 +131,10 @@ export default function StockAuditScreen() {
 
       if (matchedItem) {
         setCountsMap((prev) => {
-          const current = prev[matchedItem.itemKey] ?? matchedItem.systemQty;
+          const current = prev[matchedItem.itemKey];
           return {
             ...prev,
-            [matchedItem.itemKey]: current + 1,
+            [matchedItem.itemKey]: current !== undefined ? current + 1 : 1,
           };
         });
       } else {
