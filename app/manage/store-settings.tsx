@@ -218,6 +218,58 @@ export default function StoreSettingsScreen() {
                   />
                 </Card>
               ))}
+
+              {/* Receipt Preview */}
+              <View className="mt-4 mb-4 items-center">
+                <Text className="mb-3 text-[11px] font-bold uppercase tracking-[2px] text-slate-400">
+                  Live Receipt Preview
+                </Text>
+                <View
+                  className="bg-white p-4 shadow-xl"
+                  style={{
+                    width: values.thermal_paper_width === "58" ? 220 : 300,
+                    minHeight: 200,
+                  }}
+                >
+                  <Text className="text-black text-center font-bold text-base mb-1">Your Store Name</Text>
+                  {values.receipt_header ? (
+                    <Text className="text-black text-center text-xs mb-3">{values.receipt_header}</Text>
+                  ) : null}
+
+                  <Text className="text-black text-xs text-center tracking-widest mb-2">--------------------</Text>
+                  <View className="flex-row justify-between mb-1">
+                    <Text className="text-black text-xs">Premium Coffee</Text>
+                    <Text className="text-black text-xs">
+                      {values.currency_symbol || "$"}{Number(10).toFixed(2)}
+                    </Text>
+                  </View>
+                  <Text className="text-black text-xs text-center tracking-widest my-2">--------------------</Text>
+                  <View className="flex-row justify-between mb-1">
+                    <Text className="text-black text-xs">Subtotal</Text>
+                    <Text className="text-black text-xs">
+                      {values.currency_symbol || "$"}{Number(10).toFixed(2)}
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between mb-1">
+                    <Text className="text-black text-xs">Tax ({(parseFloat(values.tax_rate) || 0).toFixed(1)}%)</Text>
+                    <Text className="text-black text-xs">
+                      {values.currency_symbol || "$"}{(10 * ((parseFloat(values.tax_rate) || 0) / 100)).toFixed(2)}
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between mt-2 mb-4">
+                    <Text className="text-black font-bold text-sm">TOTAL</Text>
+                    <Text className="text-black font-bold text-sm">
+                      {values.currency_symbol || "$"}{(10 + 10 * ((parseFloat(values.tax_rate) || 0) / 100)).toFixed(2)}
+                    </Text>
+                  </View>
+
+                  {values.receipt_footer ? (
+                    <Text className="text-black text-center text-xs mt-4">{values.receipt_footer}</Text>
+                  ) : null}
+                  <Text className="text-black text-center text-[10px] mt-2 opacity-50">#123456789</Text>
+                </View>
+              </View>
+
               <View className="mt-2">
                 <ActionButton title={isLoading || isFetching ? "Saving..." : "Save Store Settings"} icon="save" onPress={save} disabled={isLoading || isFetching} />
               </View>
