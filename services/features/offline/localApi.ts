@@ -1,4 +1,4 @@
-import { getOfflineDb } from "@/services/offline/db";
+import { ensureStoreSettingsTable, getOfflineDb } from "@/services/offline/db";
 import {
   brands, // ✅ NEW: import brands table
   categories,
@@ -112,6 +112,7 @@ export const localApi = createApi({
     getLocalStoreSettings: builder.query({
       async queryFn({ storeId }: { storeId: string }) {
         try {
+          ensureStoreSettingsTable();
           await refreshIfOnline(["storeSettings"]);
           const result = await getOfflineDb().select().from(storeSettings)
             .where(eq(storeSettings.storeId, storeId))
@@ -134,6 +135,7 @@ export const localApi = createApi({
         syncNow?: boolean;
       }) {
         try {
+          ensureStoreSettingsTable();
           const { saveOfflineStoreSetting } = await import("@/services/offline/repository");
           const { syncNow, ...setting } = payload;
           const result = await saveOfflineStoreSetting(setting);

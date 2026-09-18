@@ -26,7 +26,7 @@ import type {
   Store,
 } from "@/services/features/stores/storeTypes";
 import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
-import { getOfflineDb, getSqliteDatabase } from "./db";
+import { ensureStoreSettingsTable, getOfflineDb, getSqliteDatabase } from "./db";
 import { createLocalId } from "./ids";
 import { isOnline } from "./network";
 import {
@@ -1328,6 +1328,7 @@ export async function upsertStoreSettings(
   remoteSettings: any[],
   defaultTenantId: string,
 ) {
+  ensureStoreSettingsTable();
   const db = getOfflineDb();
   const now = new Date().toISOString();
   for (const setting of remoteSettings) {
@@ -1373,6 +1374,7 @@ export async function upsertStoreSettings(
 }
 
 export async function getLocalStoreSettings(storeId: string) {
+  ensureStoreSettingsTable();
   return getOfflineDb().select().from(storeSettings)
     .where(eq(storeSettings.storeId, storeId))
     .orderBy(storeSettings.settingKey);
@@ -1385,6 +1387,7 @@ export async function saveOfflineStoreSetting(payload: {
   settingValue: unknown;
   description?: string;
 }) {
+  ensureStoreSettingsTable();
   const db = getOfflineDb();
   const now = new Date().toISOString();
   const [existing] = await db.select().from(storeSettings).where(

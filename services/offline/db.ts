@@ -29,6 +29,37 @@ export function getOfflineDb() {
   return db;
 }
 
+/**
+ * Defensive recovery for installs that recorded the Store Settings migration
+ * in Drizzle's journal before its SQL was bundled. `CREATE ... IF NOT EXISTS`
+ * is safe on current installs and avoids forcing a destructive database reset.
+ */
+export function ensureStoreSettingsTable() {
+  const sqlite = getSqliteDatabase();
+  sqlite.execSync(`
+    CREATE TABLE IF NOT EXISTS store_settings (
+      id TEXT PRIMARY KEY NOT NULL,
+      remote_id TEXT,
+      tenant_id TEXT NOT NULL,
+      store_id TEXT NOT NULL,
+      setting_key TEXT NOT NULL,
+      setting_value TEXT NOT NULL,
+      description TEXT,
+      sync_status TEXT NOT NULL DEFAULT 'synced',
+      sync_error TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_synced_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS store_settings_remote_id_unique
+      ON store_settings (remote_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS store_settings_store_key_idx
+      ON store_settings (store_id, setting_key);
+    CREATE INDEX IF NOT EXISTS store_settings_tenant_store_idx
+      ON store_settings (tenant_id, store_id);
+  `);
+}
+
 export const database = getOfflineDb();
 export type Database = typeof database;
 
@@ -48,6 +79,7 @@ export async function runMigrations() {
     );
 
     await migrate(drizzleDb, migrations);
+    ensureStoreSettingsTable();
     console.log("✅ Database migrations completed successfully!");
   } catch (error) {
     console.error("❌ Failed to run migrations, resetting database...", error);
