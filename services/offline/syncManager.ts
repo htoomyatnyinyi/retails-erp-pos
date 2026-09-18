@@ -47,6 +47,7 @@ import {
   upsertStaff,
   upsertSuppliers,
   upsertOrders,
+  upsertStoreSettings,
 } from "./repository";
 
 import {
@@ -200,6 +201,12 @@ export async function syncNow(
     const storeResult = await pullStores(dispatch, tenantId);
     syncedItems += storeResult.synced;
     dispatch(setSyncProgress(10));
+
+    // Settings are needed before the cashier can safely calculate totals.
+    dispatch(setSyncPhase("Pulling store settings"));
+    const settingsResult = await pullStoreSettings(dispatch, tenantId);
+    syncedItems += settingsResult.synced;
+    dispatch(setSyncProgress(12));
     // if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
 
     // --- PULL Brands ---
@@ -310,6 +317,7 @@ export async function syncNow(
         pullInventoryMovements(dispatch, tenantId),
         pullSessions(dispatch, tenantId),
         pullOrders(dispatch, tenantId),
+        pullStoreSettings(dispatch, tenantId),
       ]);
       syncedItems += refreshed.reduce(
         (total, result) => total + result.synced,
@@ -339,6 +347,7 @@ export async function syncNow(
         "LocalOrders",
         "LocalInventoryMovements",
         "LocalPriceHistory",
+        "LocalStoreSettings",
         "LocalSyncOutbox",
       ]),
     );
@@ -977,6 +986,24 @@ async function pullSessions(dispatch: AppDispatch, tenantId: string) {
   }
 }
 
+async function pullStoreSettings(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const { data, error } = await store.dispatch(
+      remoteApi.endpoints.getTenantStoreSettings.initiate({}, { forceRefetch: true }),
+    );
+    if (error) {
+      console.error("❌ Store settings pull failed:", error);
+      return { synced: 0 };
+    }
+    const rows = extractCollection(data, ["settings", "data"]);
+    if (rows.length) await upsertStoreSettings(rows, tenantId);
+    return { synced: rows.length };
+  } catch (error) {
+    console.error("❌ Failed to pull store settings:", error);
+    return { synced: 0 };
+  }
+}
+
 // byme
 async function pullOrders(dispatch: AppDispatch, tenantId: string) {
   try {
@@ -1093,6 +1120,7 @@ export const pullInventoryMovementsForRead = pullInventoryMovements;
 export const pullSessionsForRead = pullSessions;
 export const pullOrdersForRead = pullOrders;
 export const pullPriceHistoryForRead = pullPriceHistory;
+export const pullStoreSettingsForRead = pullStoreSettings;
 
 // ============================================
 // PUSH FUNCTIONS
@@ -2239,7 +2267,10 @@ async function processOutboxItem(
           // create sync completed do not call `/staff/<local-id>` and receive 404.
           let endpoint = item.endpoint;
           let requestPayload = payload;
-          if (item.operation !== "create") {
+          // Store settings use POST as an idempotent upsert. Older app builds
+          // queued these with operation="upsert"; keep their original endpoint
+          // instead of rewriting it to the nonexistent `/store_settings/:id`.
+          if (item.operation !== "create" && item.entity !== "store_settings") {
             const remoteId = await resolveEntityRemoteId(
               item.entity,
               item.entityId,
@@ -2284,6 +2315,7 @@ async function processOutboxItem(
             data?.brand ??
             data?.staff ??
             data?.supplier ??
+            data?.setting ??
             data?.store ??
             data?.category ??
             data?.customer ??

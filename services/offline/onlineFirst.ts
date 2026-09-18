@@ -13,7 +13,8 @@ export type SyncEntity =
   | "inventoryMovements"
   | "sessions"
   | "orders"
-  | "priceHistory";
+  | "priceHistory"
+  | "storeSettings";
 
 const ENTITY_PULL_MAP: Record<
   SyncEntity,
@@ -66,6 +67,10 @@ const ENTITY_PULL_MAP: Record<
   priceHistory: async (dispatch, tenantId) => {
     const { pullPriceHistoryForRead } = await import("./syncManager");
     await pullPriceHistoryForRead(dispatch, tenantId);
+  },
+  storeSettings: async (dispatch, tenantId) => {
+    const { pullStoreSettingsForRead } = await import("./syncManager");
+    await pullStoreSettingsForRead(dispatch, tenantId);
   },
 };
 

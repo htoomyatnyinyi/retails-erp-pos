@@ -13,6 +13,7 @@ import {
   products,
   productVariants,
   sessions,
+  storeSettings,
   staff,
   stores,
   suppliers,
@@ -79,7 +80,8 @@ export type LocalTagTypes =
   | "LocalSyncOutbox"
   | "LocalStaff"
   | "LocalSuppliers"
-  | "LocalBrands"; // ✅ NEW: add Brand tag
+  | "LocalBrands"
+  | "LocalStoreSettings"; // ✅ NEW: add Brand tag
 
 // ============================================
 // LOCAL API
@@ -103,8 +105,47 @@ export const localApi = createApi({
     "LocalStaff",
     "LocalSuppliers",
     "LocalBrands", // ✅ NEW
+    "LocalStoreSettings",
   ] as const,
   endpoints: (builder) => ({
+    // Cached locally so checkout configuration is available offline.
+    getLocalStoreSettings: builder.query({
+      async queryFn({ storeId }: { storeId: string }) {
+        try {
+          await refreshIfOnline(["storeSettings"]);
+          const result = await getOfflineDb().select().from(storeSettings)
+            .where(eq(storeSettings.storeId, storeId))
+            .orderBy(storeSettings.settingKey);
+          return { data: result };
+        } catch (error) {
+          return { error: { message: (error as Error).message } };
+        }
+      },
+      providesTags: ["LocalStoreSettings"],
+    }),
+
+    saveLocalStoreSetting: builder.mutation({
+      async queryFn(payload: {
+        tenantId: string;
+        storeId: string;
+        settingKey: string;
+        settingValue: unknown;
+        description?: string;
+        syncNow?: boolean;
+      }) {
+        try {
+          const { saveOfflineStoreSetting } = await import("@/services/offline/repository");
+          const { syncNow, ...setting } = payload;
+          const result = await saveOfflineStoreSetting(setting);
+          if (syncNow) pushIfOnline();
+          return { data: result };
+        } catch (error) {
+          return { error: { message: (error as Error).message } };
+        }
+      },
+      invalidatesTags: ["LocalStoreSettings"],
+    }),
+
     // ============================================
     // 0. BRANDS (NEW)
     // ============================================
@@ -2282,6 +2323,10 @@ export const {
   useCreateLocalBrandMutation,
   useUpdateLocalBrandMutation,
   useDeleteLocalBrandMutation,
+
+  // Store settings
+  useGetLocalStoreSettingsQuery,
+  useSaveLocalStoreSettingMutation,
 
   // Products
   useGetLocalProductsQuery,

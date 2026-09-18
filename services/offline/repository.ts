@@ -43,6 +43,7 @@ import {
   productVariants,
   products,
   sessions,
+  storeSettings,
   staff,
   stores,
   suppliers,
@@ -55,6 +56,7 @@ import {
   type LocalProduct,
   type LocalProductVariant,
   type LocalSession,
+  type LocalStoreSetting,
   type LocalStore,
 } from "./schema";
 
@@ -1320,6 +1322,94 @@ export async function upsertSessions(
         },
       });
   }
+}
+
+export async function upsertStoreSettings(
+  remoteSettings: any[],
+  defaultTenantId: string,
+) {
+  const db = getOfflineDb();
+  const now = new Date().toISOString();
+  for (const setting of remoteSettings) {
+    const remoteId = String(setting.id ?? setting.remoteId);
+    const storeId = String(setting.storeId ?? "");
+    if (!remoteId || !storeId || !setting.settingKey) continue;
+    const [existing] = await db
+      .select({ id: storeSettings.id })
+      .from(storeSettings)
+      .where(
+        or(
+          eq(storeSettings.id, remoteId),
+          eq(storeSettings.remoteId, remoteId),
+          and(eq(storeSettings.storeId, storeId), eq(storeSettings.settingKey, setting.settingKey)),
+        ),
+      )
+      .limit(1);
+    const value = typeof setting.settingValue === "string"
+      ? (() => { try { return JSON.parse(setting.settingValue); } catch { return setting.settingValue; } })()
+      : setting.settingValue;
+    const values = {
+      remoteId,
+      tenantId: setting.tenantId ?? defaultTenantId,
+      storeId,
+      settingKey: String(setting.settingKey),
+      settingValue: value,
+      description: setting.description ?? null,
+      syncStatus: "synced",
+      syncError: null,
+      updatedAt: setting.updatedAt ?? now,
+      lastSyncedAt: now,
+    } as const;
+    if (existing) {
+      await db.update(storeSettings).set(values).where(eq(storeSettings.id, existing.id));
+    } else {
+      await db.insert(storeSettings).values({
+        id: remoteId,
+        createdAt: setting.createdAt ?? setting.updatedAt ?? now,
+        ...values,
+      });
+    }
+  }
+}
+
+export async function getLocalStoreSettings(storeId: string) {
+  return getOfflineDb().select().from(storeSettings)
+    .where(eq(storeSettings.storeId, storeId))
+    .orderBy(storeSettings.settingKey);
+}
+
+export async function saveOfflineStoreSetting(payload: {
+  tenantId: string;
+  storeId: string;
+  settingKey: string;
+  settingValue: unknown;
+  description?: string;
+}) {
+  const db = getOfflineDb();
+  const now = new Date().toISOString();
+  const [existing] = await db.select().from(storeSettings).where(
+    and(eq(storeSettings.storeId, payload.storeId), eq(storeSettings.settingKey, payload.settingKey)),
+  ).limit(1);
+  const id = existing?.id ?? createLocalId("setting");
+  const value = {
+    tenantId: payload.tenantId,
+    storeId: payload.storeId,
+    settingKey: payload.settingKey,
+    settingValue: payload.settingValue,
+    description: payload.description ?? null,
+    syncStatus: "pending",
+    syncError: null,
+    updatedAt: now,
+  } as const;
+  if (existing) {
+    await db.update(storeSettings).set(value).where(eq(storeSettings.id, id));
+  } else {
+    await db.insert(storeSettings).values({ id, remoteId: null, createdAt: now, lastSyncedAt: null, ...value });
+  }
+  // The server's POST endpoint is an upsert keyed by (storeId, settingKey).
+  // POST is the server-side upsert endpoint, including edits to an existing key.
+  await enqueueMutation("store_settings", id, "create", "/api/tenant/store-settings/", "POST", payload);
+  return (await db.select().from(storeSettings).where(eq(storeSettings.id, id)).limit(1))[0] as LocalStoreSetting;
 }
 
 export async function upsertOrders(
@@ -3559,6 +3649,19 @@ export async function markEntitySynced(
         ...(remote.name && { name: remote.name }),
       })
       .where(eq(stores.id, localId));
+  } else if (entity === "store_settings") {
+    await getOfflineDb()
+      .update(storeSettings)
+      .set({
+        ...(remote.id || remote.remoteId
+          ? { remoteId: remote.id ?? remote.remoteId }
+          : {}),
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: now,
+        lastSyncedAt: now,
+      })
+      .where(eq(storeSettings.id, localId));
   } else if (entity === "staff") {
     await getOfflineDb()
       .update(staff)
@@ -3784,6 +3887,8 @@ function getTableForEntity(entity: string) {
       return customers;
     case "stores":
       return stores;
+    case "store_settings":
+      return storeSettings;
     case "sessions":
       return sessions;
     case "orders":

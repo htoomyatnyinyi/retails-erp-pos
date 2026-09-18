@@ -15,6 +15,7 @@ import { clearCart } from "@/services/features/cart/cartSlice";
 import {
   useGetLocalCustomersQuery,
   useGetLocalOrderByIdQuery,
+  useGetLocalStoreSettingsQuery,
   useGetLocalStoresQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -298,6 +299,10 @@ const ReceiptScreen = () => {
   } = useGetLocalOrderByIdQuery(id);
   const { data: customers = [] } = useGetLocalCustomersQuery({});
   const { data: stores = [] } = useGetLocalStoresQuery({});
+  const { data: storeSettings = [] } = useGetLocalStoreSettingsQuery(
+    { storeId: order?.storeId || "" },
+    { skip: !order?.storeId },
+  );
 
   const offline = useAppSelector((state) => state.offline);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -345,6 +350,11 @@ const ReceiptScreen = () => {
       .slice(-8)
       .toUpperCase()}`;
   }, [order?.id]);
+  const receiptSetting = (key: string, fallback: string) =>
+    String((storeSettings as any[]).find((item) => item.settingKey === key)?.settingValue ?? fallback);
+  const thermalPaperWidth = ["58", "80"].includes(receiptSetting("thermal_paper_width", "80"))
+    ? receiptSetting("thermal_paper_width", "80")
+    : "80";
 
   const customer = useMemo(
     () => customers.find((item: any) => item.id === order?.customerId),
@@ -637,7 +647,7 @@ const ReceiptScreen = () => {
               font-family: 'Courier New', Courier, monospace;
               font-size: 12px;
               padding: 16px;
-              max-width: 300px;
+              max-width: ${thermalPaperWidth}mm;
               margin: 0 auto;
             }
             .center { text-align: center; }
@@ -656,7 +666,7 @@ const ReceiptScreen = () => {
         </head>
         <body>
           <div class="center">
-            <div class="brand">${escapeHtml(store?.name || "POS SYSTEM")}</div>
+            <div class="brand">${escapeHtml(receiptSetting("receipt_header", store?.name || "POS SYSTEM"))}</div>
             <div class="text-muted">${escapeHtml(store?.address || "")}</div>
             <div class="text-muted">${escapeHtml(store?.phone || "")}</div>
             <div class="divider"></div>
@@ -704,8 +714,7 @@ const ReceiptScreen = () => {
           }
           <div class="divider"></div>
           <div class="center">
-            <div><strong>THANK YOU!</strong></div>
-            <div class="text-muted">Have a great day!</div>
+            <div><strong>${escapeHtml(receiptSetting("receipt_footer", "THANK YOU!"))}</strong></div>
             <div class="text-muted" style="margin-top:8px;font-size:10px;">${receiptNumber}</div>
           </div>
         </body>

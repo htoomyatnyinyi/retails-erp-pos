@@ -967,6 +967,18 @@ export default function ManageScreen() {
 
                 <TouchableOpacity
                   className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                  onPress={() => router.push("/manage/store-settings")}
+                >
+                  <View className="flex-row items-center justify-between mb-3">
+                    <MaterialIcons name="settings" size={24} color="#a78bfa" />
+                    <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                  </View>
+                  <Text className="text-white text-base font-bold">Store Settings</Text>
+                  <Text className="text-slate-400 text-xs mt-1">Tax, currency & receipts</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
                   onPress={() => router.push("/manage/inventory-movements")}
                 >
                   <View className="flex-row items-center justify-between mb-3">

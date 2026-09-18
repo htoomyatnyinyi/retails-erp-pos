@@ -17,6 +17,7 @@ import {
   useGetLocalCustomersQuery,
   useGetLocalInventoryQuery,
   useGetLocalProductsQuery,
+  useGetLocalStoreSettingsQuery,
   useGetLocalVariantsQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -116,6 +117,10 @@ export default function POSScreen() {
   const { data: inventoryData } = useGetLocalInventoryQuery({
     storeId: currentStoreId || undefined,
   });
+  const { data: storeSettings = [] } = useGetLocalStoreSettingsQuery(
+    { storeId: currentStoreId || "" },
+    { skip: !currentStoreId },
+  );
 
   const matchesId = (value: any, target: any) =>
     value != null &&
@@ -160,7 +165,16 @@ export default function POSScreen() {
   );
   const cartCount = cartItems.reduce((count, item) => count + item.qty, 0);
   const cartSubtotal = cartTotal;
-  const taxAmount = cartTotal * 0.05; // 5% tax
+  const settingValue = (key: string, fallback: any) => {
+    const value = (storeSettings as any[]).find((item) => item.settingKey === key)?.settingValue;
+    return value ?? fallback;
+  };
+  const taxRate = Number(settingValue("tax_rate", 0)) || 0;
+  const taxableSubtotal = cartItems
+    .filter((item: any) => item.isTaxable !== false)
+    .reduce((total, item) => total + item.price * item.qty, 0);
+  const taxAmount = taxableSubtotal * (taxRate / 100);
+  const currencySymbol = String(settingValue("currency_symbol", "$"));
   const discountAmount = 0;
   const grandTotal = cartSubtotal + taxAmount - discountAmount;
 
@@ -693,7 +707,7 @@ export default function POSScreen() {
                 </Text>
               </View>
               <Text className="text-white font-black text-xl">
-                ${cartTotal.toFixed(2)}
+                {currencySymbol}{cartTotal.toFixed(2)}
               </Text>
             </TouchableOpacity>
           </View>
@@ -800,8 +814,8 @@ export default function POSScreen() {
                     </Text>
                   </View>
                   <View className="flex-row justify-between mb-1">
-                    <Text className="text-slate-400">Tax (5%)</Text>
-                    <Text className="text-white">${taxAmount.toFixed(2)}</Text>
+                    <Text className="text-slate-400">Tax ({taxRate}%)</Text>
+                    <Text className="text-white">{currencySymbol}{taxAmount.toFixed(2)}</Text>
                   </View>
                   <View className="flex-row justify-between mb-1">
                     <Text className="text-slate-400">Discount</Text>

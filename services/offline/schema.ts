@@ -23,6 +23,7 @@ export const syncEntities = [
   "price_history",
   "staff",
   "suppliers",
+  "store_settings",
 ] as const;
 export type SyncEntity = (typeof syncEntities)[number];
 
@@ -490,6 +491,30 @@ export const sessions = sqliteTable(
     userIdx: index("sessions_user_idx").on(table.userId),
     statusIdx: index("sessions_status_idx").on(table.status),
     openedIdx: index("sessions_opened_idx").on(table.openedAt),
+  }),
+);
+
+// A checkout must be able to read its configuration without a network call.
+// One row per key also lets a changed value be synced independently.
+export const storeSettings = sqliteTable(
+  "store_settings",
+  {
+    id: text("id").primaryKey(),
+    remoteId: text("remote_id").unique(),
+    tenantId: text("tenant_id").notNull(),
+    storeId: text("store_id").notNull(),
+    settingKey: text("setting_key").notNull(),
+    settingValue: text("setting_value", { mode: "json" }).$type<unknown>().notNull(),
+    description: text("description"),
+    syncStatus: text("sync_status").notNull().default("synced"),
+    syncError: text("sync_error"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastSyncedAt: text("last_synced_at"),
+  },
+  (table) => ({
+    storeKeyIdx: uniqueIndex("store_settings_store_key_idx").on(table.storeId, table.settingKey),
+    tenantStoreIdx: index("store_settings_tenant_store_idx").on(table.tenantId, table.storeId),
   }),
 );
 
@@ -961,6 +986,7 @@ export type LocalStore = typeof stores.$inferSelect;
 export type LocalStaff = typeof staff.$inferSelect;
 export type LocalSupplier = typeof suppliers.$inferSelect;
 export type LocalSession = typeof sessions.$inferSelect;
+export type LocalStoreSetting = typeof storeSettings.$inferSelect;
 export type LocalOrder = typeof orders.$inferSelect;
 export type LocalOrderItem = typeof orderItems.$inferSelect;
 export type LocalPriceHistory = typeof priceHistory.$inferSelect;
@@ -985,6 +1011,7 @@ export type InsertStore = typeof stores.$inferInsert;
 export type InsertStaff = typeof staff.$inferInsert;
 export type InsertSupplier = typeof suppliers.$inferInsert;
 export type InsertSession = typeof sessions.$inferInsert;
+export type InsertStoreSetting = typeof storeSettings.$inferInsert;
 export type InsertOrder = typeof orders.$inferInsert;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
 export type InsertPriceHistory = typeof priceHistory.$inferInsert;
