@@ -51,7 +51,8 @@ export default function StockAuditScreen() {
   const { data: variantsData = [] } = useGetLocalVariantsQuery(undefined);
 
   // Mutation
-  const [adjustStock, { isLoading: isAdjusting }] = useAdjustLocalStockMutation();
+  const [adjustStock, { isLoading: isAdjusting }] =
+    useAdjustLocalStockMutation();
 
   // Active store resolution
   const activeStore = useMemo(() => {
@@ -174,7 +175,9 @@ export default function StockAuditScreen() {
   // Metrics
   const totalItemsCount = auditList.length;
   const countedItemsCount = Object.keys(countsMap).length;
-  const itemsWithVarianceCount = auditList.filter((i) => i.variance !== 0).length;
+  const itemsWithVarianceCount = auditList.filter(
+    (i) => i.variance !== 0,
+  ).length;
   const totalGainQty = auditList
     .filter((i) => i.variance > 0)
     .reduce((sum, i) => sum + i.variance, 0);
@@ -258,7 +261,9 @@ export default function StockAuditScreen() {
               </Text>
             )}
             <View className="flex-row items-center gap-2 mt-1">
-              <Text className="text-slate-400 text-[10px]">SKU: {item.sku}</Text>
+              <Text className="text-slate-400 text-[10px]">
+                SKU: {item.sku}
+              </Text>
               {item.barcode && (
                 <Text className="text-slate-500 text-[10px]">
                   • Barcode: {item.barcode}
@@ -345,6 +350,25 @@ export default function StockAuditScreen() {
       {/* Header */}
       <View className="px-5 pt-3 pb-2">
         <Header
+          eyebrow="Inventory Management"
+          title="Stock Audit & Take"
+          subtitle={
+            activeStore
+              ? `Physical count & audit for ${activeStore.name}`
+              : "Physical inventory reconciliation"
+          }
+          right={
+            <TouchableOpacity
+              onPress={() => router.back()}
+              className="rounded-full bg-slate-800 p-2"
+            >
+              <MaterialIcons name="arrow-back" size={20} color="#cbd5e1" />
+            </TouchableOpacity>
+          }
+        />
+      </View>
+      {/* <View className="px-5 pt-3 pb-2">
+        <Header
           title="Stock Audit & Take"
           subtitle={
             activeStore
@@ -354,7 +378,7 @@ export default function StockAuditScreen() {
           showBack
           onBack={() => router.back()}
         />
-      </View>
+      </View> */}
 
       {/* Store Filter Scroll */}
       <View className="px-5 mb-4">
@@ -413,11 +437,7 @@ export default function StockAuditScreen() {
               ? `+${totalGainQty - totalLossQty}`
               : `-${totalLossQty - totalGainQty}`
           }
-          tone={
-            totalGainQty - totalLossQty >= 0
-              ? "emerald"
-              : "rose"
-          }
+          tone={totalGainQty - totalLossQty >= 0 ? "emerald" : "rose"}
         />
       </View>
 
@@ -440,7 +460,9 @@ export default function StockAuditScreen() {
               className="bg-sky-500/20 border border-sky-500/40 p-3 rounded-2xl flex-row items-center justify-center gap-2"
             >
               <MaterialIcons name="qr-code-scanner" size={20} color="#38bdf8" />
-              <Text className="text-sky-300 font-bold text-xs">Scan Barcode</Text>
+              <Text className="text-sky-300 font-bold text-xs">
+                Scan Barcode
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -452,7 +474,11 @@ export default function StockAuditScreen() {
                 <ActivityIndicator color="#0f172a" size="small" />
               ) : (
                 <>
-                  <MaterialIcons name="check-circle" size={20} color="#0f172a" />
+                  <MaterialIcons
+                    name="check-circle"
+                    size={20}
+                    color="#0f172a"
+                  />
                   <Text className="text-slate-950 font-bold text-sm">
                     Reconcile Stock
                   </Text>
@@ -491,8 +517,8 @@ export default function StockAuditScreen() {
                 mode === "ALL"
                   ? "All"
                   : mode === "VARIANCE"
-                  ? "With Variance"
-                  : "Matched"
+                    ? "With Variance"
+                    : "Matched"
               }
               tone={filterMode === mode ? "sky" : "amber"}
             />
@@ -518,7 +544,8 @@ export default function StockAuditScreen() {
                 No inventory items
               </Text>
               <Text className="text-slate-500 text-xs text-center mt-1 px-8">
-                Select a valid store location or sync products to begin stock take.
+                Select a valid store location or sync products to begin stock
+                take.
               </Text>
             </View>
           }
