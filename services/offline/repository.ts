@@ -774,15 +774,32 @@ export async function upsertInventoryMovements(
         ),
       )
       .limit(1);
+    const incomingRefId = String(
+      movement.referenceId ?? movement.reference_id ?? "",
+    );
+    const incomingType = localMovementType(movement.type ?? movement.direction);
+    const targetStoreId = localStore?.id ?? String(remoteStoreId);
+    const targetProductId = localProduct?.id ?? String(remoteProductId);
+
+    const conditions = [
+      eq(inventoryMovements.remoteId, remoteId),
+      eq(inventoryMovements.id, remoteId),
+    ];
+    if (incomingRefId) {
+      conditions.push(
+        and(
+          eq(inventoryMovements.referenceId, incomingRefId),
+          eq(inventoryMovements.storeId, targetStoreId),
+          eq(inventoryMovements.productId, targetProductId),
+          eq(inventoryMovements.type, incomingType),
+        ),
+      );
+    }
+
     const [existing] = await db
       .select({ id: inventoryMovements.id })
       .from(inventoryMovements)
-      .where(
-        or(
-          eq(inventoryMovements.remoteId, remoteId),
-          eq(inventoryMovements.id, remoteId),
-        ),
-      )
+      .where(or(...conditions))
       .limit(1);
 
     const values = {

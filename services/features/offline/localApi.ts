@@ -1812,8 +1812,24 @@ export const localApi = createApi({
             query = query.limit(limit).offset((page - 1) * limit);
           }
 
-          const result = await query;
-          return { data: result };
+          const rawResult = await query;
+          const seen = new Set<string>();
+          const deduplicated: typeof rawResult = [];
+
+          for (const item of rawResult) {
+            const primaryKey = item.remoteId || item.id;
+            const refKey = item.referenceId
+              ? `${item.referenceId}_${item.type}_${item.storeId}_${item.productId}_${item.variantId || "base"}`
+              : primaryKey;
+
+            if (!seen.has(primaryKey) && !seen.has(refKey)) {
+              seen.add(primaryKey);
+              seen.add(refKey);
+              deduplicated.push(item);
+            }
+          }
+
+          return { data: deduplicated };
         } catch (error) {
           return { error: { message: (error as Error).message } };
         }
