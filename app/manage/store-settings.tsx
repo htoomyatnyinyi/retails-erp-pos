@@ -1,12 +1,12 @@
-import { ActionButton, Card, Header, Screen } from "@/components/app-ui";
+import { Card, Header, Screen } from "@/components/app-ui";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import {
   useGetLocalStoreSettingsQuery,
   useSaveLocalStoreSettingMutation,
 } from "@/services/features/offline/localApi";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
-import { Alert, ActivityIndicator, Modal, NativeModules, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, ActivityIndicator, Modal, NativeModules, PermissionsAndroid, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { runMigrations } from "@/services/offline/db";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -49,6 +49,8 @@ export default function StoreSettingsScreen() {
   const [devices, setDevices] = useState<any[]>([]);
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [section, setSection] = useState<"checkout" | "receipt" | "printer">("checkout");
+  const [hasChanges, setHasChanges] = useState(false);
 
   const requestBluetoothPermissions = async () => {
     if (Platform.OS !== "android") return true;
@@ -113,7 +115,7 @@ export default function StoreSettingsScreen() {
         saved = { id: device.id, name: device.name, transport: "ble", writeCharacteristic: { service: characteristic.service, characteristic: characteristic.characteristic, withoutResponse: Boolean(characteristic.properties?.WriteWithoutResponse) } };
       }
       await AsyncStorage.setItem("selected_printer", JSON.stringify(saved));
-      setValues((previous) => ({ ...previous, thermal_printer_name: saved.name }));
+      updateValue("thermal_printer_name", saved.name);
       setPrinterModalVisible(false);
       Alert.alert("Printer connected", `${saved.name} selected. Tap Save Store Settings to sync its name.`);
     } catch (error: any) {
@@ -138,6 +140,14 @@ export default function StoreSettingsScreen() {
       return unchanged ? previous : next;
     });
   }, [settings]);
+
+  const updateValue = (key: string, value: string) => {
+    setHasChanges(true);
+    setValues((previous) => ({ ...previous, [key]: value }));
+  };
+  const autoPrint = values.auto_print_receipt === "true";
+  const taxRate = Number(values.tax_rate || 0) || 0;
+  const previewTotal = useMemo(() => 10 * (1 + taxRate / 100), [taxRate]);
 
   const save = async () => {
     if (!user?.tenantId || !currentStoreId) return;
@@ -172,6 +182,7 @@ export default function StoreSettingsScreen() {
         }).unwrap();
       }
       Alert.alert("Saved", "Settings are saved locally and will sync automatically.");
+      setHasChanges(false);
       router.back();
     } catch (error: any) {
       console.error("Store settings save failed", error);
@@ -187,95 +198,32 @@ export default function StoreSettingsScreen() {
   return (
     <Screen>
       <SafeAreaView className="flex-1">
-        <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
-          <Header eyebrow="Configuration" title="Store Settings" subtitle="These values are cached on this device for offline checkout." />
+        <ScrollView contentContainerStyle={{ paddingBottom: 110 }} showsVerticalScrollIndicator={false}>
+          <Header eyebrow="Store configuration" title="Store Settings" subtitle="Set up checkout, receipts, and your printer." right={<View className={`rounded-full px-2.5 py-1 ${hasChanges ? "bg-amber-400/15" : "bg-emerald-400/15"}`}><Text className={`text-[10px] font-bold ${hasChanges ? "text-amber-300" : "text-emerald-300"}`}>{hasChanges ? "UNSAVED" : "SAVED"}</Text></View>} />
           {!currentStoreId ? (
             <Card><Text className="text-amber-300">Select a store in Manage before editing its settings.</Text></Card>
           ) : (
             <>
-              <Card className="mb-4">
-                <Text className="text-xs text-sky-300 uppercase tracking-widest">Offline-first</Text>
-                <Text className="text-slate-400 text-xs mt-2">Changes apply locally immediately; an internet connection is only needed to sync them to other devices.</Text>
-              </Card>
-              <Card className="mb-3">
-                <Text className="text-white font-bold">Bluetooth Thermal Printer</Text>
-                <Text className="text-slate-400 text-xs mt-1">Search paired or nearby printers, then connect and select one for receipts.</Text>
-                <TouchableOpacity className="mt-3 flex-row items-center justify-center rounded-xl bg-sky-500/20 p-3" onPress={() => setPrinterModalVisible(true)}>
-                  <MaterialIcons name="bluetooth-searching" size={20} color="#38bdf8" />
-                  <Text className="ml-2 font-bold text-sky-300">Search / Connect Printer</Text>
-                </TouchableOpacity>
-              </Card>
-              {fields.map((field) => (
-                <Card key={field.key} className="mb-3">
-                  <Text className="text-white font-bold">{field.label}</Text>
-                  <Text className="text-slate-400 text-xs mt-1">{field.description}</Text>
-                  <TextInput
-                    value={values[field.key] ?? field.fallback}
-                    onChangeText={(value) => setValues((previous) => ({ ...previous, [field.key]: value }))}
-                    keyboardType={field.key === "tax_rate" ? "decimal-pad" : "default"}
-                    className="mt-3 rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
-                    placeholderTextColor="#64748b"
-                  />
-                </Card>
-              ))}
-
-              {/* Receipt Preview */}
-              <View className="mt-4 mb-4 items-center">
-                <Text className="mb-3 text-[11px] font-bold uppercase tracking-[2px] text-slate-400">
-                  Live Receipt Preview
-                </Text>
-                <View
-                  className="bg-white p-4 shadow-xl"
-                  style={{
-                    width: values.thermal_paper_width === "58" ? 220 : 300,
-                    minHeight: 200,
-                  }}
-                >
-                  <Text className="text-black text-center font-bold text-base mb-1">Your Store Name</Text>
-                  {values.receipt_header ? (
-                    <Text className="text-black text-center text-xs mb-3">{values.receipt_header}</Text>
-                  ) : null}
-
-                  <Text className="text-black text-xs text-center tracking-widest mb-2">--------------------</Text>
-                  <View className="flex-row justify-between mb-1">
-                    <Text className="text-black text-xs">Premium Coffee</Text>
-                    <Text className="text-black text-xs">
-                      {values.currency_symbol || "$"}{Number(10).toFixed(2)}
-                    </Text>
-                  </View>
-                  <Text className="text-black text-xs text-center tracking-widest my-2">--------------------</Text>
-                  <View className="flex-row justify-between mb-1">
-                    <Text className="text-black text-xs">Subtotal</Text>
-                    <Text className="text-black text-xs">
-                      {values.currency_symbol || "$"}{Number(10).toFixed(2)}
-                    </Text>
-                  </View>
-                  <View className="flex-row justify-between mb-1">
-                    <Text className="text-black text-xs">Tax ({(parseFloat(values.tax_rate) || 0).toFixed(1)}%)</Text>
-                    <Text className="text-black text-xs">
-                      {values.currency_symbol || "$"}{(10 * ((parseFloat(values.tax_rate) || 0) / 100)).toFixed(2)}
-                    </Text>
-                  </View>
-                  <View className="flex-row justify-between mt-2 mb-4">
-                    <Text className="text-black font-bold text-sm">TOTAL</Text>
-                    <Text className="text-black font-bold text-sm">
-                      {values.currency_symbol || "$"}{(10 + 10 * ((parseFloat(values.tax_rate) || 0) / 100)).toFixed(2)}
-                    </Text>
-                  </View>
-
-                  {values.receipt_footer ? (
-                    <Text className="text-black text-center text-xs mt-4">{values.receipt_footer}</Text>
-                  ) : null}
-                  <Text className="text-black text-center text-[10px] mt-2 opacity-50">#123456789</Text>
-                </View>
+              <View className="mb-5 flex-row rounded-2xl bg-slate-900 p-1.5">
+                {([ ["checkout", "Checkout", "point-of-sale"], ["receipt", "Receipt", "receipt-long"], ["printer", "Printer", "print"] ] as const).map(([key, label, icon]) => <TouchableOpacity key={key} className={`flex-1 flex-row items-center justify-center rounded-xl px-2 py-2.5 ${section === key ? "bg-sky-500" : ""}`} onPress={() => setSection(key)}><MaterialIcons name={icon} size={16} color={section === key ? "#082f49" : "#94a3b8"} /><Text className={`ml-1.5 text-xs font-bold ${section === key ? "text-slate-950" : "text-slate-400"}`}>{label}</Text></TouchableOpacity>)}
               </View>
 
-              <View className="mt-2">
-                <ActionButton title={isLoading || isFetching ? "Saving..." : "Save Store Settings"} icon="save" onPress={save} disabled={isLoading || isFetching} />
-              </View>
+              {section === "checkout" && <>
+                <Card className="mb-3"><View className="flex-row items-center"><View className="rounded-2xl bg-emerald-400/15 p-3"><MaterialIcons name="calculate" size={22} color="#6ee7b7" /></View><View className="ml-3 flex-1"><Text className="text-white font-bold">Tax at checkout</Text><Text className="mt-1 text-xs text-slate-400">Applied only to taxable products.</Text></View></View><View className="mt-4 flex-row items-center rounded-2xl border border-white/10 bg-slate-950 px-4"><Text className="text-slate-400 text-base">Tax rate</Text><TextInput value={values.tax_rate ?? "0"} onChangeText={(value) => updateValue("tax_rate", value)} keyboardType="decimal-pad" className="ml-auto min-w-20 py-4 text-right text-lg font-bold text-white" /><Text className="ml-1 text-slate-400">%</Text></View></Card>
+                <Card className="mb-3"><View className="flex-row items-center"><View className="rounded-2xl bg-violet-400/15 p-3"><MaterialIcons name="payments" size={22} color="#c4b5fd" /></View><View className="ml-3 flex-1"><Text className="text-white font-bold">Currency display</Text><Text className="mt-1 text-xs text-slate-400">Shown throughout checkout and receipts.</Text></View></View><View className="mt-4 flex-row items-center rounded-2xl border border-white/10 bg-slate-950 px-4"><Text className="text-slate-400">Symbol</Text><TextInput value={values.currency_symbol ?? "$"} onChangeText={(value) => updateValue("currency_symbol", value)} maxLength={4} className="ml-auto min-w-20 py-4 text-right text-lg font-bold text-white" /></View></Card>
+                <Card><Text className="text-xs font-bold uppercase tracking-[2px] text-slate-400">Checkout preview</Text><View className="mt-3 flex-row justify-between"><Text className="text-slate-300">Sample sale</Text><Text className="font-bold text-white">{values.currency_symbol || "$"}10.00</Text></View><View className="mt-2 flex-row justify-between"><Text className="text-slate-300">Tax ({taxRate}%)</Text><Text className="font-bold text-white">{values.currency_symbol || "$"}{(taxRate / 10).toFixed(2)}</Text></View><View className="mt-3 border-t border-white/10 pt-3 flex-row justify-between"><Text className="font-bold text-white">Customer pays</Text><Text className="text-lg font-black text-sky-300">{values.currency_symbol || "$"}{previewTotal.toFixed(2)}</Text></View></Card>
+              </>}
+
+              {section === "receipt" && <>
+                <Card className="mb-3"><Text className="text-white font-bold">Receipt message</Text><Text className="mt-1 text-xs text-slate-400">Use a short message that fits a thermal receipt.</Text><Text className="mt-4 text-xs font-bold uppercase tracking-widest text-slate-500">Header</Text><TextInput value={values.receipt_header ?? ""} onChangeText={(value) => updateValue("receipt_header", value)} placeholder="e.g. Welcome to our store" placeholderTextColor="#64748b" className="mt-2 rounded-2xl border border-white/10 bg-slate-950 px-4 py-3.5 text-white" /><Text className="mt-4 text-xs font-bold uppercase tracking-widest text-slate-500">Footer</Text><TextInput value={values.receipt_footer ?? ""} onChangeText={(value) => updateValue("receipt_footer", value)} placeholder="Thank you!" placeholderTextColor="#64748b" className="mt-2 rounded-2xl border border-white/10 bg-slate-950 px-4 py-3.5 text-white" /></Card>
+                <View className="mb-4 items-center"><Text className="mb-3 text-[11px] font-bold uppercase tracking-[2px] text-slate-400">Live receipt preview</Text><View className="bg-white px-4 py-5" style={{ width: values.thermal_paper_width === "58" ? 220 : 300 }}><Text className="text-center text-base font-bold text-black">Your Store</Text>{values.receipt_header ? <Text className="mt-1 text-center text-xs text-black">{values.receipt_header}</Text> : null}<Text className="my-3 text-center text-xs text-black">--------------------------</Text><View className="flex-row justify-between"><Text className="text-xs text-black">Sample item</Text><Text className="text-xs text-black">{values.currency_symbol || "$"}10.00</Text></View><View className="mt-2 flex-row justify-between"><Text className="text-xs text-black">Tax</Text><Text className="text-xs text-black">{values.currency_symbol || "$"}{(taxRate / 10).toFixed(2)}</Text></View><View className="mt-2 border-t border-black pt-2 flex-row justify-between"><Text className="text-sm font-bold text-black">TOTAL</Text><Text className="text-sm font-bold text-black">{values.currency_symbol || "$"}{previewTotal.toFixed(2)}</Text></View><Text className="mt-5 text-center text-xs text-black">{values.receipt_footer || "Thank you!"}</Text></View></View>
+              </>}
+
+              {section === "printer" && <><Card className="mb-3"><View className="flex-row items-center"><View className={`rounded-2xl p-3 ${values.thermal_printer_name ? "bg-emerald-400/15" : "bg-slate-800"}`}><MaterialIcons name="print" size={22} color={values.thermal_printer_name ? "#6ee7b7" : "#94a3b8"} /></View><View className="ml-3 flex-1"><Text className="text-white font-bold">{values.thermal_printer_name || "No printer selected"}</Text><Text className="mt-1 text-xs text-slate-400">{values.thermal_printer_name ? "Ready for receipt printing" : "Connect a Bluetooth thermal printer"}</Text></View></View><TouchableOpacity className="mt-4 flex-row items-center justify-center rounded-2xl bg-sky-500 px-4 py-3.5" onPress={() => setPrinterModalVisible(true)}><MaterialIcons name="bluetooth-searching" size={20} color="#082f49" /><Text className="ml-2 font-bold text-slate-950">{values.thermal_printer_name ? "Change Printer" : "Search for Printer"}</Text></TouchableOpacity></Card><Card className="mb-3"><Text className="text-white font-bold">Paper size</Text><Text className="mt-1 text-xs text-slate-400">Choose the roll installed in the printer.</Text><View className="mt-4 flex-row gap-3">{["58", "80"].map((width) => <TouchableOpacity key={width} onPress={() => updateValue("thermal_paper_width", width)} className={`flex-1 rounded-2xl border p-4 ${values.thermal_paper_width === width ? "border-sky-400 bg-sky-500/15" : "border-white/10 bg-slate-950"}`}><Text className={`text-center text-lg font-black ${values.thermal_paper_width === width ? "text-sky-300" : "text-white"}`}>{width} mm</Text><Text className="mt-1 text-center text-[10px] text-slate-400">{width === "58" ? "Compact" : "Standard"}</Text></TouchableOpacity>)}</View></Card><Card><View className="flex-row items-center"><View className="flex-1"><Text className="text-white font-bold">Auto-print receipt</Text><Text className="mt-1 text-xs text-slate-400">Print after completing a sale.</Text></View><Switch value={autoPrint} onValueChange={(enabled) => updateValue("auto_print_receipt", String(enabled))} trackColor={{ false: "#334155", true: "#0284c7" }} /></View></Card></>}
             </>
           )}
         </ScrollView>
+        {currentStoreId && <View className="absolute bottom-0 left-0 right-0 border-t border-white/10 bg-slate-950 px-4 pb-5 pt-3"><TouchableOpacity disabled={isLoading || isFetching || !hasChanges} onPress={save} className={`flex-row items-center justify-center rounded-2xl py-4 ${(isLoading || isFetching || !hasChanges) ? "bg-slate-800" : "bg-sky-400"}`}><MaterialIcons name="save" size={20} color={(isLoading || isFetching || !hasChanges) ? "#64748b" : "#082f49"} /><Text className={`ml-2 font-black ${(isLoading || isFetching || !hasChanges) ? "text-slate-500" : "text-slate-950"}`}>{isLoading ? "Saving settings..." : hasChanges ? "Save changes" : "All changes saved"}</Text></TouchableOpacity></View>}
         <Modal visible={printerModalVisible} transparent animationType="slide" onRequestClose={() => setPrinterModalVisible(false)}>
           <View className="flex-1 justify-end bg-black/60">
             <View className="max-h-[80%] rounded-t-3xl bg-slate-900 p-6">
