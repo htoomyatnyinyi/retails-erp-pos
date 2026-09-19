@@ -220,14 +220,14 @@ export default function OrdersScreen() {
             eyebrow="Transactions"
             title="Orders"
             subtitle="View all orders and their details"
-            right={
-              <TouchableOpacity
-                className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30"
-                onPress={() => router.push("/pos")}
-              >
-                <Text className="text-sky-400 text-xs font-bold">+ New</Text>
-              </TouchableOpacity>
-            }
+            // right={
+            //   <TouchableOpacity
+            //     className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30"
+            //     onPress={() => router.push("/pos")}
+            //   >
+            //     <Text className="text-sky-400 text-xs font-bold">+ New</Text>
+            //   </TouchableOpacity>
+            // }
           />
         </View>
 
@@ -242,7 +242,8 @@ export default function OrdersScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
-            className="flex-1 px-3 py-3.5 text-sm text-white"
+            className="flex-1 p-2 text-sm text-white"
+            // className="flex-1 px-3 py-3.5 text-sm text-white"
           />
           {search.length > 0 && (
             <TouchableOpacity
@@ -578,7 +579,7 @@ export default function OrdersScreen() {
                         label="Total"
                         value={`$${orderDetail.grandTotal?.toFixed(2) || "0.00"}`}
                         valueColor="#34d399"
-                        bold
+                        // bold
                       />
                     </Card>
 

@@ -533,11 +533,12 @@ export default function StockAuditScreen() {
         </View>
       ) : (
         <FlatList
+          className="flex-1"
           data={filteredList}
-          keyExtractor={(item) => item.itemKey}
+          keyExtractor={(item, index) => item?.itemKey ? String(item.itemKey) : String(index)}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
           renderItem={renderAuditCard}
-          ListEmptyComponent={
+          ListEmptyComponent={() => (
             <View className="items-center justify-center mt-12">
               <MaterialIcons name="fact-check" size={40} color="#64748b" />
               <Text className="text-white mt-3 font-bold text-base">
@@ -548,7 +549,7 @@ export default function StockAuditScreen() {
                 take.
               </Text>
             </View>
-          }
+          )}
         />
       )}
 
