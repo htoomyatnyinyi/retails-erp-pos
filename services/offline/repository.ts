@@ -2984,6 +2984,46 @@ export async function updateOfflineProduct(
             updatedAt: now,
           } as Partial<typeof productVariants.$inferInsert>)
           .where(eq(productVariants.id, v.id));
+
+        // Restore missing variant inventory row if backend had flattened it previously
+        const storeId = (productData as any).storeId;
+        if (storeId) {
+          const [inv] = await db
+            .select()
+            .from(inventory)
+            .where(
+              and(
+                eq(inventory.productId, id),
+                eq(inventory.storeId, storeId),
+                eq(inventory.variantId, v.id),
+              ),
+            );
+          if (!inv) {
+            // Look for master inventory stock to copy
+            const [masterInv] = await db
+              .select()
+              .from(inventory)
+              .where(
+                and(
+                  eq(inventory.productId, id),
+                  eq(inventory.storeId, storeId),
+                  sql`variant_id IS NULL`,
+                ),
+              );
+            const invId = createLocalId("inv");
+            await db.insert(inventory).values({
+              id: invId,
+              tenantId: (productData as any).tenantId ?? "default",
+              storeId: storeId,
+              productId: id,
+              variantId: v.id,
+              quantity: masterInv ? masterInv.quantity : Number(v.initialStock ?? 0),
+              syncStatus: "pending",
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+        }
       } else {
         // Create new variant locally
         const newId = v.id || createLocalId("var");

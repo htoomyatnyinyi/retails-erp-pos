@@ -388,24 +388,50 @@ export default function POSScreen() {
         grandTotal: grandTotal,
         paidAmount: grandTotal,
         changeAmount: 0,
-        items: cartItems.map((item) => ({
-          productId: resolveProductId(item),
-          variantId: item.variantId || undefined,
-          productName: item.name,
-          quantity: item.qty,
-          unitPrice: item.price,
-          subTotal: item.price * item.qty,
-          discountAmount: 0,
-        })),
-        syncItems: cartItems.map((item) => ({
-          productId: resolveProductId(item),
-          variantId: item.variantId || undefined,
-          productName: item.name,
-          quantity: item.qty,
-          unitPrice: item.price,
-          subTotal: item.price * item.qty,
-          discountAmount: 0,
-        })),
+        items: cartItems.map((item) => {
+          const rows =
+            inventoryData?.filter((inv: any) =>
+              matchesId(inv.productId, item.productId || item.id),
+            ) ?? [];
+          const hasSeparatedVariantStock = rows.some(
+            (inv: any) => inv.variantId != null,
+          );
+          const finalVariantId = hasSeparatedVariantStock
+            ? item.variantId
+            : undefined;
+
+          return {
+            productId: resolveProductId(item),
+            variantId: finalVariantId || undefined,
+            productName: item.name,
+            quantity: item.qty,
+            unitPrice: item.price,
+            subTotal: item.price * item.qty,
+            discountAmount: 0,
+          };
+        }),
+        syncItems: cartItems.map((item) => {
+          const rows =
+            inventoryData?.filter((inv: any) =>
+              matchesId(inv.productId, item.productId || item.id),
+            ) ?? [];
+          const hasSeparatedVariantStock = rows.some(
+            (inv: any) => inv.variantId != null,
+          );
+          const finalVariantId = hasSeparatedVariantStock
+            ? item.variantId
+            : undefined;
+
+          return {
+            productId: resolveProductId(item),
+            variantId: finalVariantId || undefined,
+            productName: item.name,
+            quantity: item.qty,
+            unitPrice: item.price,
+            subTotal: item.price * item.qty,
+            discountAmount: 0,
+          };
+        }),
       };
 
       console.log("📦 Order payload:", JSON.stringify(orderPayload, null, 2));
