@@ -41,6 +41,7 @@ import { useDispatch } from "react-redux";
 import { useRouter } from "expo-router";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { getLocalActiveSession } from "@/services/offline/repository";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function SyncScreen() {
   const dispatch = useDispatch();
@@ -251,35 +252,33 @@ export default function SyncScreen() {
 
   return (
     <Screen padded={false}>
-      <View className="px-5 pt-6 pb-4">
-        <Header
-          eyebrow="System Status"
-          title="Synchronization"
-          subtitle="Manage offline data and connectivity"
-          right={
-            <View className="mt-2 items-end gap-2">
-              <Pill
-                label={isOnline ? "ONLINE" : "OFFLINE"}
-                tone={isOnline ? "emerald" : "rose"}
-              />
-              <Pill
-                label="INCREMENTAL"
-                tone="sky"
-              />
-            </View>
-          }
-        />
-      </View>
+      <SafeAreaView className="flex-1">
+        <View className="">
+          <Header
+            eyebrow="System Status"
+            title="Synchronization"
+            subtitle="Manage offline data and connectivity"
+            right={
+              <View className="mt-2 items-end gap-2">
+                <Pill
+                  label={isOnline ? "ONLINE" : "OFFLINE"}
+                  tone={isOnline ? "emerald" : "rose"}
+                />
+                <Pill label="INCREMENTAL" tone="sky" />
+              </View>
+            }
+          />
+        </View>
+      </SafeAreaView>
 
       <ScrollView
-        className="flex-1 px-5"
+        className="flex-1 p-1"
         contentContainerStyle={{ paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Status Section */}
-        {/* <SectionTitle title="Overview" /> */}
+        <SectionTitle title="Overview" />
 
-        {/* 
         <View className="flex gap-3 mb-3 mt-0">
           <View className="flex flex-row gap-3">
             <MetricCard
@@ -310,7 +309,30 @@ export default function SyncScreen() {
               disabled={isSyncing || !isOnline}
             />
           </View>
-        </View> */}
+        </View>
+
+        {/* Sync Progress */}
+        {(isSyncing || syncStatus === "complete" || syncStatus === "error") && (
+          <Card className="mb-5">
+            <View className="flex-row items-center justify-between mb-2">
+              <Text className="text-slate-300 font-semibold text-xs uppercase tracking-widest">
+                Syncing Progress
+              </Text>
+              <Text className="text-sky-400 font-bold text-xs">
+                {Math.round(syncProgress)}%
+              </Text>
+            </View>
+            <View className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+              <View
+                className="h-full bg-sky-500 rounded-full"
+                style={{ width: `${syncProgress}%` }}
+              />
+            </View>
+            <Text className="text-slate-400 text-xs mt-2 text-center">
+              {syncPhase}
+            </Text>
+          </Card>
+        )}
 
         {/* Details Section */}
         <SectionTitle
@@ -546,7 +568,7 @@ export default function SyncScreen() {
       >
         <View className="flex-1 bg-black/80">
           <View className="flex-1 bg-slate-900 rounded-t-3xl mt-12">
-            <View className="px-5 pt-5 pb-4">
+            <View className=" pt-5 pb-4">
               <View className="flex-row justify-between items-center mb-4">
                 <Text className="text-white font-bold text-xl">
                   Failed Items ({failedItems.length})
@@ -815,7 +837,7 @@ export default function SyncScreen() {
 
 //   return (
 //     <Screen padded={false}>
-//       <View className="px-5 pt-6 pb-4">
+//       <View className=" pt-6 pb-4">
 //         <Header
 //           eyebrow="System Status"
 //           title="Synchronization"
@@ -832,7 +854,7 @@ export default function SyncScreen() {
 //       </View>
 
 //       <ScrollView
-//         className="flex-1 px-5"
+//         className="flex-1 "
 //         contentContainerStyle={{ paddingBottom: 40 }}
 //         showsVerticalScrollIndicator={false}
 //       >
@@ -1141,7 +1163,7 @@ export default function SyncScreen() {
 //       >
 //         <View className="flex-1 bg-black/80">
 //           <View className="flex-1 bg-slate-900 rounded-t-3xl mt-12">
-//             <View className="px-5 pt-5 pb-4">
+//             <View className=" pt-5 pb-4">
 //               <View className="flex-row justify-between items-center mb-4">
 //                 <Text className="text-white font-bold text-xl">
 //                   Failed Items ({failedItems.length})

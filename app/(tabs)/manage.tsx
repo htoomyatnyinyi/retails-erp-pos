@@ -956,10 +956,20 @@ export default function ManageScreen() {
                   onPress={() => router.push("/manage/sessions")}
                 >
                   <View className="flex-row items-center justify-between mb-3">
-                    <MaterialIcons name="fact-check" size={24} color="#60a5fa" />
-                    <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                    <MaterialIcons
+                      name="fact-check"
+                      size={24}
+                      color="#60a5fa"
+                    />
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={18}
+                      color="#64748b"
+                    />
                   </View>
-                  <Text className="text-white text-base font-bold">Session Logs</Text>
+                  <Text className="text-white text-base font-bold">
+                    Session Logs
+                  </Text>
                   <Text className="text-slate-400 text-xs mt-1">
                     Cash drawer records
                   </Text>
@@ -971,14 +981,37 @@ export default function ManageScreen() {
                 >
                   <View className="flex-row items-center justify-between mb-3">
                     <MaterialIcons name="settings" size={24} color="#a78bfa" />
-                    <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={18}
+                      color="#64748b"
+                    />
                   </View>
-                  <Text className="text-white text-base font-bold">Store Settings</Text>
-                  <Text className="text-slate-400 text-xs mt-1">Tax, currency & receipts</Text>
+                  <Text className="text-white text-base font-bold">
+                    Store Settings
+                  </Text>
+                  <Text className="text-slate-400 text-xs mt-1">
+                    Tax, currency & receipts
+                  </Text>
                 </TouchableOpacity>
-                <TouchableOpacity className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4" onPress={() => router.push("/manage/integrations")}>
-                  <View className="flex-row items-center justify-between mb-3"><MaterialIcons name="hub" size={24} color="#c4b5fd" /><MaterialIcons name="chevron-right" size={18} color="#64748b" /></View>
-                  <Text className="text-white text-base font-bold">Integrations</Text><Text className="text-slate-400 text-xs mt-1">Webhooks & API keys</Text>
+                <TouchableOpacity
+                  className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                  onPress={() => router.push("/manage/integrations")}
+                >
+                  <View className="flex-row items-center justify-between mb-3">
+                    <MaterialIcons name="hub" size={24} color="#c4b5fd" />
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={18}
+                      color="#64748b"
+                    />
+                  </View>
+                  <Text className="text-white text-base font-bold">
+                    Integrations
+                  </Text>
+                  <Text className="text-slate-400 text-xs mt-1">
+                    Webhooks & API keys
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -986,10 +1019,20 @@ export default function ManageScreen() {
                   onPress={() => router.push("/manage/inventory-movements")}
                 >
                   <View className="flex-row items-center justify-between mb-3">
-                    <MaterialIcons name="swap-horiz" size={24} color="#fbbf24" />
-                    <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                    <MaterialIcons
+                      name="swap-horiz"
+                      size={24}
+                      color="#fbbf24"
+                    />
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={18}
+                      color="#64748b"
+                    />
                   </View>
-                  <Text className="text-white text-base font-bold">Movements</Text>
+                  <Text className="text-white text-base font-bold">
+                    Movements
+                  </Text>
                   <Text className="text-slate-400 text-xs mt-1">
                     Stock history & adjust
                   </Text>
@@ -1000,10 +1043,20 @@ export default function ManageScreen() {
                   onPress={() => router.push("/manage/stock-audit")}
                 >
                   <View className="flex-row items-center justify-between mb-3">
-                    <MaterialIcons name="fact-check" size={24} color="#38bdf8" />
-                    <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                    <MaterialIcons
+                      name="fact-check"
+                      size={24}
+                      color="#38bdf8"
+                    />
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={18}
+                      color="#64748b"
+                    />
                   </View>
-                  <Text className="text-white text-base font-bold">Stock Audit</Text>
+                  <Text className="text-white text-base font-bold">
+                    Stock Audit
+                  </Text>
                   <Text className="text-slate-400 text-xs mt-1">
                     Physical count & take
                   </Text>
@@ -1015,16 +1068,26 @@ export default function ManageScreen() {
                 >
                   <View className="flex-row items-center gap-4">
                     <View className="w-12 h-12 rounded-full bg-rose-500/10 items-center justify-center border border-rose-500/20">
-                      <MaterialIcons name="security" size={24} color="#f87171" />
+                      <MaterialIcons
+                        name="security"
+                        size={24}
+                        color="#f87171"
+                      />
                     </View>
                     <View>
-                      <Text className="text-white text-base font-bold">System Audit Trail</Text>
+                      <Text className="text-white text-base font-bold">
+                        System Audit Trail
+                      </Text>
                       <Text className="text-slate-400 text-xs mt-0.5">
                         Track price changes, deletes, and security events
                       </Text>
                     </View>
                   </View>
-                  <MaterialIcons name="chevron-right" size={20} color="#64748b" />
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={20}
+                    color="#64748b"
+                  />
                 </TouchableOpacity>
               </View>
             </>

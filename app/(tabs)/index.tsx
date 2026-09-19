@@ -184,12 +184,26 @@ export default function POSScreen() {
     return inventory && inventory.quantity < item.qty;
   });
 
-  const hasUnallocatedVariantStock = cartItems.some(
-    (item) =>
-      !!item.variantId &&
-      !hasSeparatedVariantInventory(item.productId || item.id, item.variantId),
-  );
-
+  const hasUnallocatedVariantStock = cartItems.some((item) => {
+    if (!item.variantId) return false;
+    const rows =
+      inventoryData?.filter((inv: any) =>
+        matchesId(inv.productId, item.productId || item.id),
+      ) ?? [];
+    const hasSeparatedVariantStock = rows.some(
+      (inv: any) => inv.variantId != null,
+    );
+    if (!hasSeparatedVariantStock) {
+      // Backend flattened or legacy product: stock is entirely on master product.
+      // We gracefully fallback to master, so no unallocated error.
+      return false;
+    }
+    // If separated stock exists for the product, but this specific variant is missing it:
+    return !hasSeparatedVariantInventory(
+      item.productId || item.id,
+      item.variantId,
+    );
+  });
   // Handlers
   const handleAddToCart = (product: any) => {
     const inventory = findInventory(
@@ -328,12 +342,11 @@ export default function POSScreen() {
 
     if (hasUnallocatedVariantStock) {
       Alert.alert(
-        "Allocate option stock first",
+        "Variant Stock Error",
         "This product has options, but its stock is still stored on the master product. Allocate the stock to each option before selling it.",
       );
       return;
     }
-
     if (!activeSession) {
       Alert.alert(
         "No Active Session",
@@ -349,13 +362,25 @@ export default function POSScreen() {
     setIsSubmitting(true);
 
     try {
+      // For variant items, the cart `id` is "productId::variant::variantId"
+      // but `productId` should always be the real product ID (not the composite).
+      const resolveProductId = (item: any) => {
+        if (item.productId) return item.productId;
+        // Fallback: strip composite variant key if present
+        const raw = item.id;
+        if (typeof raw === "string" && raw.includes("::variant::")) {
+          return raw.split("::variant::")[0];
+        }
+        return raw;
+      };
+
       const orderPayload = {
-        tenantId: user?.tenantId,
-        storeId: activeSession.storeId,
+        tenantId: user?.tenantId || "",
+        storeId: activeSession.storeId || "",
         sessionId: activeSession.id,
-        userId: user?.id,
+        userId: user?.id || "",
         customerId: selectedCustomer?.id,
-        paymentMethod: paymentMethod,
+        paymentMethod: paymentMethod || "CASH",
         paymentStatus: "PAID",
         subTotal: cartSubtotal,
         taxAmount: taxAmount,
@@ -364,8 +389,8 @@ export default function POSScreen() {
         paidAmount: grandTotal,
         changeAmount: 0,
         items: cartItems.map((item) => ({
-          productId: item.productId || item.id,
-          variantId: item.variantId,
+          productId: resolveProductId(item),
+          variantId: item.variantId || undefined,
           productName: item.name,
           quantity: item.qty,
           unitPrice: item.price,
@@ -373,8 +398,8 @@ export default function POSScreen() {
           discountAmount: 0,
         })),
         syncItems: cartItems.map((item) => ({
-          productId: item.productId || item.id,
-          variantId: item.variantId,
+          productId: resolveProductId(item),
+          variantId: item.variantId || undefined,
           productName: item.name,
           quantity: item.qty,
           unitPrice: item.price,
@@ -382,6 +407,8 @@ export default function POSScreen() {
           discountAmount: 0,
         })),
       };
+
+      console.log("📦 Order payload:", JSON.stringify(orderPayload, null, 2));
 
       const result = await createOrder(orderPayload).unwrap();
       if (!result) throw new Error("Order was not created");
@@ -418,9 +445,11 @@ export default function POSScreen() {
       router.push(`/receipt/${result.id}`);
       refetch();
     } catch (error: any) {
+      console.error("❌ Checkout error:", error);
+      console.error("❌ Error details:", JSON.stringify(error, null, 2));
       Alert.alert(
         "Checkout Failed",
-        error?.data?.message || "Failed to create order. Please try again.",
+        error?.message || error?.data?.message || "Failed to create order. Please try again.",
       );
     } finally {
       setIsSubmitting(false);

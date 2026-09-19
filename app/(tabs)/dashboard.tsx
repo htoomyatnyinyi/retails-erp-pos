@@ -546,7 +546,13 @@ export default function DashboardScreen() {
     // Cashier & Staff Sales Breakdown (Today)
     const staffSalesMap: Record<
       string,
-      { id: string; name: string; role: string; ordersCount: number; totalSales: number }
+      {
+        id: string;
+        name: string;
+        role: string;
+        ordersCount: number;
+        totalSales: number;
+      }
     > = {};
 
     for (const order of todayOrders) {
@@ -559,7 +565,9 @@ export default function DashboardScreen() {
           const name =
             staffMember?.name ||
             order.user?.name ||
-            (uId === user?.id ? user?.name || "Cashier" : `Staff #${uId.slice(-4)}`);
+            (uId === user?.id
+              ? user?.name || "Cashier"
+              : `Staff #${uId.slice(-4)}`);
           const role =
             staffMember?.role || (uId === user?.id ? user?.role : "CASHIER");
           staffSalesMap[uId] = {
@@ -815,12 +823,18 @@ export default function DashboardScreen() {
               >
                 <View className="flex-row items-center justify-between">
                   <MaterialIcons name="inventory-2" size={20} color="#fbbf24" />
-                  <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={18}
+                    color="#64748b"
+                  />
                 </View>
                 <Text className="text-white text-xl font-black mt-3">
                   {metrics.lowStockCount}
                 </Text>
-                <Text className="text-slate-400 text-xs mt-1">Low-stock items</Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  Low-stock items
+                </Text>
                 {metrics.outOfStockCount > 0 && (
                   <Text className="text-rose-400 text-[10px] font-bold mt-2">
                     {metrics.outOfStockCount} out of stock
@@ -837,16 +851,24 @@ export default function DashboardScreen() {
                     size={20}
                     color={metrics.activeSession ? "#34d399" : "#f87171"}
                   />
-                  <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={18}
+                    color="#64748b"
+                  />
                 </View>
                 <Text className="text-white text-xl font-black mt-3">
                   {metrics.activeSession ? "Open" : "Closed"}
                 </Text>
-                <Text className="text-slate-400 text-xs mt-1">Register session</Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  Register session
+                </Text>
                 <Text
                   className={`text-[10px] font-bold mt-2 ${metrics.activeSession ? "text-emerald-400" : "text-rose-400"}`}
                 >
-                  {metrics.activeSession ? "Ready for checkout" : "Open a session to sell"}
+                  {metrics.activeSession
+                    ? "Ready for checkout"
+                    : "Open a session to sell"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -869,7 +891,8 @@ export default function DashboardScreen() {
                         {order.orderNumber || `#${String(order.id).slice(-6)}`}
                       </Text>
                       <Text className="text-slate-500 text-[10px] mt-1">
-                        {new Date(order.createdAt).toLocaleString()} • {order.status}
+                        {new Date(order.createdAt).toLocaleString()} •{" "}
+                        {order.status}
                       </Text>
                     </View>
                     <Text className="text-emerald-400 font-bold">
@@ -901,7 +924,8 @@ export default function DashboardScreen() {
               ) : (
                 movements.slice(0, 5).map((m: any) => {
                   const isPositive =
-                    ["IN", "ADJUSTMENT"].includes(m.type) && Number(m.quantity) > 0;
+                    ["IN", "ADJUSTMENT"].includes(m.type) &&
+                    Number(m.quantity) > 0;
                   const typeColor =
                     m.type === "IN"
                       ? "text-emerald-400"
@@ -1148,14 +1172,19 @@ export default function DashboardScreen() {
                   >
                     <View className="flex-row items-center gap-3">
                       <View className="w-9 h-9 rounded-full bg-sky-500/10 border border-sky-500/20 items-center justify-center">
-                        <MaterialIcons name="person" size={18} color="#38bdf8" />
+                        <MaterialIcons
+                          name="person"
+                          size={18}
+                          color="#38bdf8"
+                        />
                       </View>
                       <View>
                         <Text className="text-white text-sm font-semibold">
                           {s.name}
                         </Text>
                         <Text className="text-slate-500 text-[10px]">
-                          {s.role} • {s.ordersCount} {s.ordersCount === 1 ? "order" : "orders"}
+                          {s.role} • {s.ordersCount}{" "}
+                          {s.ordersCount === 1 ? "order" : "orders"}
                         </Text>
                       </View>
                     </View>

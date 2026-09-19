@@ -26,7 +26,11 @@ import type {
   Store,
 } from "@/services/features/stores/storeTypes";
 import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
-import { ensureStoreSettingsTable, getOfflineDb, getSqliteDatabase } from "./db";
+import {
+  ensureStoreSettingsTable,
+  getOfflineDb,
+  getSqliteDatabase,
+} from "./db";
 import { createLocalId } from "./ids";
 import { isOnline } from "./network";
 import {
@@ -1342,13 +1346,23 @@ export async function upsertStoreSettings(
         or(
           eq(storeSettings.id, remoteId),
           eq(storeSettings.remoteId, remoteId),
-          and(eq(storeSettings.storeId, storeId), eq(storeSettings.settingKey, setting.settingKey)),
+          and(
+            eq(storeSettings.storeId, storeId),
+            eq(storeSettings.settingKey, setting.settingKey),
+          ),
         ),
       )
       .limit(1);
-    const value = typeof setting.settingValue === "string"
-      ? (() => { try { return JSON.parse(setting.settingValue); } catch { return setting.settingValue; } })()
-      : setting.settingValue;
+    const value =
+      typeof setting.settingValue === "string"
+        ? (() => {
+            try {
+              return JSON.parse(setting.settingValue);
+            } catch {
+              return setting.settingValue;
+            }
+          })()
+        : setting.settingValue;
     const values = {
       remoteId,
       tenantId: setting.tenantId ?? defaultTenantId,
@@ -1362,7 +1376,10 @@ export async function upsertStoreSettings(
       lastSyncedAt: now,
     } as const;
     if (existing) {
-      await db.update(storeSettings).set(values).where(eq(storeSettings.id, existing.id));
+      await db
+        .update(storeSettings)
+        .set(values)
+        .where(eq(storeSettings.id, existing.id));
     } else {
       await db.insert(storeSettings).values({
         id: remoteId,
@@ -1375,7 +1392,9 @@ export async function upsertStoreSettings(
 
 export async function getLocalStoreSettings(storeId: string) {
   ensureStoreSettingsTable();
-  return getOfflineDb().select().from(storeSettings)
+  return getOfflineDb()
+    .select()
+    .from(storeSettings)
     .where(eq(storeSettings.storeId, storeId))
     .orderBy(storeSettings.settingKey);
 }
@@ -1390,9 +1409,16 @@ export async function saveOfflineStoreSetting(payload: {
   ensureStoreSettingsTable();
   const db = getOfflineDb();
   const now = new Date().toISOString();
-  const [existing] = await db.select().from(storeSettings).where(
-    and(eq(storeSettings.storeId, payload.storeId), eq(storeSettings.settingKey, payload.settingKey)),
-  ).limit(1);
+  const [existing] = await db
+    .select()
+    .from(storeSettings)
+    .where(
+      and(
+        eq(storeSettings.storeId, payload.storeId),
+        eq(storeSettings.settingKey, payload.settingKey),
+      ),
+    )
+    .limit(1);
   const id = existing?.id ?? createLocalId("setting");
   const value = {
     tenantId: payload.tenantId,
@@ -1407,12 +1433,33 @@ export async function saveOfflineStoreSetting(payload: {
   if (existing) {
     await db.update(storeSettings).set(value).where(eq(storeSettings.id, id));
   } else {
-    await db.insert(storeSettings).values({ id, remoteId: null, createdAt: now, lastSyncedAt: null, ...value });
+    await db
+      .insert(storeSettings)
+      .values({
+        id,
+        remoteId: null,
+        createdAt: now,
+        lastSyncedAt: null,
+        ...value,
+      });
   }
   // The server's POST endpoint is an upsert keyed by (storeId, settingKey).
   // POST is the server-side upsert endpoint, including edits to an existing key.
-  await enqueueMutation("store_settings", id, "create", "/api/tenant/store-settings/", "POST", payload);
-  return (await db.select().from(storeSettings).where(eq(storeSettings.id, id)).limit(1))[0] as LocalStoreSetting;
+  await enqueueMutation(
+    "store_settings",
+    id,
+    "create",
+    "/api/tenant/store-settings/",
+    "POST",
+    payload,
+  );
+  return (
+    await db
+      .select()
+      .from(storeSettings)
+      .where(eq(storeSettings.id, id))
+      .limit(1)
+  )[0] as LocalStoreSetting;
 }
 
 export async function upsertOrders(
@@ -2432,6 +2479,17 @@ export async function createOfflineOrder(
   const clientOrderId = payload.clientOrderId ?? orderId;
   const orderNumber = payload.orderNumber ?? `ORD-${orderId}`;
 
+  // Validate required NOT NULL fields before attempting DB insert
+  if (!payload.tenantId) {
+    throw new Error("Missing tenantId — cannot create order without tenant.");
+  }
+  if (!payload.userId) {
+    throw new Error("Missing userId — cannot create order without user.");
+  }
+  if (!payload.paymentMethod) {
+    throw new Error("Missing paymentMethod — cannot create order without payment method.");
+  }
+
   const { syncItems, ...orderPayload } = payload as CreateOrderPayload & {
     syncItems?: any[];
   };
@@ -2439,6 +2497,9 @@ export async function createOfflineOrder(
     ...orderPayload,
     clientOrderId,
     orderNumber,
+    tenantId: payload.tenantId,
+    userId: payload.userId,
+    paymentMethod: payload.paymentMethod,
     subTotal: Number(payload.subTotal) || 0,
     taxAmount: Number(payload.taxAmount) || 0,
     discountAmount: Number(payload.discountAmount) || 0,
@@ -2447,6 +2508,8 @@ export async function createOfflineOrder(
     changeAmount: Number(payload.changeAmount) || 0,
     items: payload.items.map((item: any) => ({
       ...item,
+      productId: item.productId || null,
+      variantId: item.variantId || null,
       quantity: Number(item.quantity) || 0,
       unitPrice: Number(item.unitPrice) || 0,
       subTotal: Number(item.subTotal) || 0,
@@ -2477,14 +2540,14 @@ export async function createOfflineOrder(
         payload.tenantId || null,
         cleanPayload.storeId ?? null,
         cleanPayload.registerId ?? null,
-        cleanPayload.userId,
+        cleanPayload.userId ?? null,
         cleanPayload.customerId ?? null,
         cleanPayload.sessionId ?? null,
         orderNumber,
         cleanPayload.status ??
           (cleanPayload.paymentStatus === "PAID" ? "COMPLETED" : "PENDING"),
         cleanPayload.paymentStatus ?? "PAID",
-        cleanPayload.paymentMethod,
+        cleanPayload.paymentMethod ?? "CASH",
         cleanPayload.subTotal,
         cleanPayload.taxAmount ?? 0,
         cleanPayload.discountAmount ?? 0,
@@ -2507,7 +2570,7 @@ export async function createOfflineOrder(
         [
           createLocalId("item"),
           orderId,
-          item.productId,
+          item.productId ?? null,
           item.variantId ?? null,
           item.productName ?? item.name ?? item.variantName ?? null,
           item.quantity,
@@ -2534,12 +2597,17 @@ export async function createOfflineOrder(
           ? [
               item.quantity,
               now,
-              item.productId,
-              cleanPayload.storeId,
-              item.productId,
-              cleanPayload.storeId,
+              item.productId ?? null,
+              cleanPayload.storeId ?? null,
+              item.productId ?? null,
+              cleanPayload.storeId ?? null,
             ]
-          : [item.quantity, now, item.productId, cleanPayload.storeId],
+          : [
+              item.quantity,
+              now,
+              item.productId ?? null,
+              cleanPayload.storeId ?? null,
+            ],
       );
     }
 
@@ -2914,7 +2982,6 @@ export async function updateOfflineProduct(
             size: v.size,
             isActive: v.isActive ?? true,
             updatedAt: now,
-            syncStatus: "pending",
           } as Partial<typeof productVariants.$inferInsert>)
           .where(eq(productVariants.id, v.id));
       } else {
@@ -2938,7 +3005,36 @@ export async function updateOfflineProduct(
           createdAt: now,
           updatedAt: now,
         } as typeof productVariants.$inferInsert);
+        
+        // Also create an inventory row for the new variant if a store exists
+        const storeId = (productData as any).storeId;
+        if (storeId) {
+          const invId = createLocalId("inv");
+          await db.insert(inventory).values({
+            id: invId,
+            tenantId: (productData as any).tenantId ?? "default",
+            storeId: storeId,
+            productId: id,
+            variantId: newId,
+            quantity: Number(v.initialStock ?? 0),
+            syncStatus: "pending",
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
       }
+    }
+
+    // Since variants exist, ensure no master inventory remains
+    const storeId = (productData as any).storeId;
+    if (storeId) {
+       await db.delete(inventory).where(
+         and(
+           eq(inventory.productId, id),
+           eq(inventory.storeId, storeId),
+           sql`variant_id IS NULL`
+         )
+       );
     }
 
     // Deactivate variants that were removed from the list

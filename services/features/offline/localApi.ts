@@ -1638,6 +1638,8 @@ export const localApi = createApi({
           pushIfOnline();
           return { data: result };
         } catch (error) {
+          console.error("❌ createLocalOrder failed:", (error as Error).message);
+          console.error("❌ Full error:", error);
           return { error: { message: (error as Error).message } };
         }
       },

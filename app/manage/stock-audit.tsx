@@ -21,6 +21,7 @@ import {
   useGetLocalStoresQuery,
   useAdjustLocalStockMutation,
 } from "@/services/features/offline/localApi";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type FilterMode = "ALL" | "VARIANCE" | "UNCOUNTED" | "MATCHED";
 
@@ -83,7 +84,7 @@ export default function StockAuditScreen() {
           )
         : undefined;
 
-      const itemKey = `${inv.productId}_${inv.variantId || "base"}`;
+      const itemKey = inv.id;
       const countedQty = countsMap[itemKey];
       const isCounted = countedQty !== undefined;
       const systemQty = Number(inv.quantity || 0);
@@ -348,7 +349,8 @@ export default function StockAuditScreen() {
   return (
     <Screen>
       {/* Header */}
-      <View className="px-5 pt-3 pb-2">
+      <SafeAreaView className="">
+        {/* <View className="px-5 pt-3 pb-2"> */}
         <Header
           eyebrow="Inventory Management"
           title="Stock Audit & Take"
@@ -366,7 +368,7 @@ export default function StockAuditScreen() {
             </TouchableOpacity>
           }
         />
-      </View>
+      </SafeAreaView>
       {/* <View className="px-5 pt-3 pb-2">
         <Header
           title="Stock Audit & Take"
@@ -381,7 +383,8 @@ export default function StockAuditScreen() {
       </View> */}
 
       {/* Store Filter Scroll */}
-      <View className="px-5 mb-4">
+      <View className="mb-4">
+        {/* <View className="px-5 mb-4"> */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -419,7 +422,7 @@ export default function StockAuditScreen() {
       </View>
 
       {/* Metrics Banner */}
-      <View className="flex-row gap-2 px-5 mb-4">
+      <View className="flex-row gap-2 mb-4">
         <MetricCard
           label="Total Items"
           value={totalItemsCount.toString()}
@@ -442,7 +445,7 @@ export default function StockAuditScreen() {
       </View>
 
       {/* Session Action Control Bar */}
-      <View className="px-5 mb-4 flex-row items-center gap-3">
+      <View className="mb-4 flex-row items-center gap-3">
         {!sessionActive ? (
           <TouchableOpacity
             onPress={handleStartAudit}
@@ -490,8 +493,8 @@ export default function StockAuditScreen() {
       </View>
 
       {/* Search & Filter Bar */}
-      <View className="px-5 mb-3 flex-row items-center gap-2">
-        <View className="flex-1 flex-row items-center bg-white/5 rounded-[18px] px-3 py-1 border border-white/10">
+      <View className="mb-3 flex-row items-center gap-2">
+        <View className="flex-1 flex-row items-center bg-white/5 rounded-[18px] p-2 border border-white/10">
           <MaterialIcons name="search" size={18} color="#94a3b8" />
           <TextInput
             className="flex-1 ml-2 text-white text-xs font-medium"
@@ -509,7 +512,7 @@ export default function StockAuditScreen() {
       </View>
 
       {/* Quick Filter Pills */}
-      <View className="px-5 mb-3 flex-row gap-2">
+      <View className="mb-3 flex-row gap-2">
         {(["ALL", "VARIANCE", "MATCHED"] as FilterMode[]).map((mode) => (
           <TouchableOpacity key={mode} onPress={() => setFilterMode(mode)}>
             <Pill
@@ -535,7 +538,9 @@ export default function StockAuditScreen() {
         <FlatList
           className="flex-1"
           data={filteredList}
-          keyExtractor={(item, index) => item?.itemKey ? String(item.itemKey) : String(index)}
+          keyExtractor={(item, index) =>
+            item?.itemKey ? String(item.itemKey) : String(index)
+          }
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
           renderItem={renderAuditCard}
           ListEmptyComponent={() => (

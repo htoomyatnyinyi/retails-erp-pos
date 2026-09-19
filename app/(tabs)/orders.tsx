@@ -214,11 +214,11 @@ export default function OrdersScreen() {
 
   return (
     <Screen padded={false}>
-      <SafeAreaView className="flex-1 bg-slate-950">
+      <SafeAreaView className="flex-1">
         <View className="px-5 pt-6 pb-2">
           <Header
             eyebrow="Transactions"
-            title="Orders"
+            title="Sales"
             subtitle="View all orders and their details"
             // right={
             //   <TouchableOpacity
