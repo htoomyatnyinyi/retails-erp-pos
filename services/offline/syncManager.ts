@@ -1364,10 +1364,20 @@ async function resolveRemoteTransactionReferences(payload: any) {
           .from(productVariants)
           .where(eq(productVariants.id, String(item.variantId)))
           .limit(1);
-        if (!variantRow)
-          throw new Error(`Variant ${item.variantId} is not cached locally.`);
-        if (variantRow.remoteId)
-          item = { ...item, variantId: variantRow.remoteId };
+        if (variantRow) {
+          if (variantRow.remoteId)
+            item = { ...item, variantId: variantRow.remoteId };
+        } else {
+          // Variant not found locally — likely a flattened single-variant
+          // product. Strip variantId so the backend deducts from master stock.
+          const { variantId: _dropped, ...rest } = item;
+          item = rest;
+        }
+      } else {
+        // variantId is null/undefined — strip it so the backend doesn't
+        // try to look up variant-specific stock.
+        const { variantId: _dropped, ...rest } = item;
+        item = rest;
       }
       return item;
     }),

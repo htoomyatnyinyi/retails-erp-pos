@@ -2518,13 +2518,19 @@ export async function createOfflineOrder(
   };
   const remotePayload = {
     ...cleanPayload,
-    items: (syncItems ?? cleanPayload.items).map((item: any) => ({
-      ...item,
-      quantity: Number(item.quantity) || 0,
-      unitPrice: Number(item.unitPrice) || 0,
-      subTotal: Number(item.subTotal) || 0,
-      discountAmount: Number(item.discountAmount) || 0,
-    })),
+    items: (syncItems ?? cleanPayload.items).map((item: any) => {
+      const mapped = {
+        ...item,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        subTotal: Number(item.subTotal) || 0,
+        discountAmount: Number(item.discountAmount) || 0,
+      };
+      // If variantId is explicitly null/undefined, remove it so the backend
+      // deducts from the master product instead of looking for variant stock.
+      if (!mapped.variantId) delete mapped.variantId;
+      return mapped;
+    }),
   };
 
   sqlite.withTransactionSync(() => {
